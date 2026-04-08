@@ -13,6 +13,7 @@ Endpoints:
 import os
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
@@ -112,21 +113,29 @@ async def health():
     return {"status": "ok", "version": "1.0.0"}
 
 
+
+
 @app.post("/reset")
-async def reset(request: ResetRequest):
-    if request.task_name and request.task_name in TASKS:
-        task = TASKS[request.task_name]
+async def reset(request: Request):
+    body = await request.json() if request.headers.get("content-length") else {}
+
+    session_id = body.get("session_id", "default")
+    task_name = body.get("task_name")
+    noise_seed = body.get("noise_seed")
+
+    if task_name and task_name in TASKS:
+        task = TASKS[task_name]
         env = ReputationCrisisEnv(
             max_steps=task.max_steps,
-            noise_seed=request.noise_seed,
+            noise_seed=noise_seed,
             scenario_config=task.scenario_config,
         )
     else:
         env = ReputationCrisisEnv(
-            noise_seed=request.noise_seed,
+            noise_seed=noise_seed,
         )
 
-    _envs[request.session_id] = env
+    _envs[session_id] = env
     obs = env.reset()
     return obs.dict()
 
@@ -194,14 +203,6 @@ async def run_task(request: RunTaskRequest):
     )
 
 
-@app.get("/")
-async def root():
-    return {
-        "name": "Digital Reputation Crisis Manager",
-        "description": "OpenEnv-compliant PR crisis simulation environment",
-        "docs": "/docs",
-        "tasks": list(TASKS.keys()),
-    }
 
 @app.get("/")
 def serve_frontend():
