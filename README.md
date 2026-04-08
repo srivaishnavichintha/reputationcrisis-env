@@ -1,3 +1,11 @@
+---
+title: Digital Reputation Crisis Manager
+emoji: 🚀
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
 # 🌐 Digital Reputation Crisis Manager
 
 **OpenEnv-compliant AI environment for simulating real-world PR crisis management**

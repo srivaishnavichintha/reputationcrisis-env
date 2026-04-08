@@ -1,0 +1,23 @@
+node_modules/
+
+# env
+.env
+.env.*
+
+# logs
+logs/
+*.log
+
+# runtime
+dist/
+build/
+
+# coverage
+coverage/
+
+# OS
+.DS_Store
+
+# editor
+.vscode/
+.idea/

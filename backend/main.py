@@ -15,6 +15,8 @@ from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from backend.env.environment import ReputationCrisisEnv
 from backend.env.models import Observation, Action, Reward, EnvironmentState
@@ -26,6 +28,7 @@ app = FastAPI(
     description="OpenEnv-compliant environment for AI-powered PR crisis simulation",
     version="1.0.0",
 )
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
 
 # CORS for frontend
 app.add_middleware(
@@ -109,12 +112,8 @@ async def health():
     return {"status": "ok", "version": "1.0.0"}
 
 
-@app.post("/reset", response_model=Observation)
+@app.post("/reset")
 async def reset(request: ResetRequest):
-    """
-    Reset the environment.
-    Optionally specify a task_name to use that task's scenario config.
-    """
     if request.task_name and request.task_name in TASKS:
         task = TASKS[request.task_name]
         env = ReputationCrisisEnv(
@@ -129,8 +128,7 @@ async def reset(request: ResetRequest):
 
     _envs[request.session_id] = env
     obs = env.reset()
-    return obs
-
+    return obs.dict()
 
 @app.post("/step", response_model=StepResponse)
 async def step(request: StepRequest):
@@ -204,3 +202,12 @@ async def root():
         "docs": "/docs",
         "tasks": list(TASKS.keys()),
     }
+
+@app.get("/")
+def serve_frontend():
+    return FileResponse("frontend/dist/index.html")
+
+
+@app.get("/{full_path:path}")
+def serve_all(full_path: str):
+    return FileResponse("frontend/dist/index.html")
