@@ -131,13 +131,20 @@ async def reset(request: Request):
             scenario_config=task.scenario_config,
         )
     else:
-        env = ReputationCrisisEnv(
-            noise_seed=noise_seed,
-        )
+        env = ReputationCrisisEnv(noise_seed=noise_seed)
 
     _envs[session_id] = env
     obs = env.reset()
-    return obs.dict()
+
+    
+    return {
+        "sentiment_score": obs.sentiment_score,
+        "crisis_level": obs.crisis_level,
+        "trending_topics": obs.trending_topics,
+        "public_trust": obs.public_trust,
+        "virality_index": obs.virality_index,
+        "time_step": obs.time_step,
+    }
 
 @app.post("/step", response_model=StepResponse)
 async def step(request: StepRequest):
