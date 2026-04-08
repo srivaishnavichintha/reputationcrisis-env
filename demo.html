@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reputation OS — Crisis Manager Demo</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap');
+
+:root {
+  --void: #050709;
+  --surface: #0a0d12;
+  --panel: #0d1117;
+  --border: #1c2535;
+  --border2: #2a3a55;
+  --text: #c8d8e8;
+  --dim: #3a5070;
+  --accent: #3399ff;
+  --green: #3dff7e;
+  --yellow: #f5c518;
+  --orange: #ff8c00;
+  --red: #ff3333;
+  --mono: 'Space Mono', monospace;
+  --ui: 'Rajdhani', sans-serif;
+  --display: 'Orbitron', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--void); color: var(--text); font-family: var(--ui); overflow: hidden; }
+
+/* Layout */
+.shell { display: flex; flex-direction: column; height: 100vh; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 60px; border-bottom: 1px solid var(--border);
+  background: rgba(10,13,18,0.97); flex-shrink: 0; gap: 16px;
+}
+
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-icon { font-size: 22px; color: var(--accent); filter: drop-shadow(0 0 8px var(--accent)); animation: spin 20s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.brand h1 { font-family: var(--display); font-size: 14px; font-weight: 900; letter-spacing: 0.15em; }
+.brand-sub { font-family: var(--mono); font-size: 9px; color: var(--dim); letter-spacing: 0.08em; }
+
+.top-metrics { display: flex; gap: 8px; }
+.metric { padding: 5px 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 4px; text-align: center; min-width: 60px; }
+.metric-lbl { font-family: var(--mono); font-size: 7px; color: var(--dim); letter-spacing: 0.15em; display: block; }
+.metric-val { font-family: var(--display); font-size: 15px; font-weight: 700; }
+
+.hdr-right { display: flex; gap: 8px; align-items: center; }
+.task-btns { display: flex; gap: 4px; }
+.task-btn {
+  padding: 5px 10px; border-radius: 3px; border: 1px solid var(--border2);
+  background: var(--surface); color: var(--dim); font-family: var(--mono);
+  font-size: 10px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 5px;
+}
+.task-btn.active { border-color: var(--task-c); color: var(--task-c); box-shadow: 0 0 8px color-mix(in srgb, var(--task-c) 30%, transparent); }
+.tdot { width: 6px; height: 6px; border-radius: 50%; background: var(--task-c); box-shadow: 0 0 4px var(--task-c); }
+.btn { padding: 6px 14px; border-radius: 4px; border: 1px solid var(--border2); background: var(--surface); color: var(--dim); font-family: var(--mono); font-size: 10px; font-weight: 700; cursor: pointer; letter-spacing: 0.08em; transition: 0.2s; text-transform: uppercase; }
+.btn:hover { border-color: var(--text); color: var(--text); }
+.btn.on { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px #3399ff33; }
+
+main { flex: 1; display: grid; grid-template-columns: 300px 1fr 280px; gap: 1px; background: var(--border); overflow: hidden; min-height: 0; }
+.panel { background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
+.plabel { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; color: var(--dim); padding: 9px 14px 7px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+
+/* Globe */
+.globe-wrap { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+canvas#globe { display: block; }
+
+.topics { padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 5px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.topic { font-family: var(--mono); font-size: 9px; padding: 2px 7px; border: 1px solid var(--border2); color: var(--accent); border-radius: 2px; background: rgba(51,153,255,0.05); opacity: 0; animation: fadeIn 0.4s forwards; }
+@keyframes fadeIn { to { opacity: 1; } }
+
+/* Center panels */
+.center-col { display: flex; flex-direction: column; gap: 1px; background: var(--border); }
+.chart-area { flex: 1; padding: 10px 14px; min-height: 0; }
+svg.chart { width: 100%; height: 100%; overflow: visible; }
+
+.bottom-row { display: flex; gap: 1px; background: var(--border); flex: 0 0 160px; }
+.trust-panel, .viral-panel { flex: 1; background: var(--panel); display: flex; flex-direction: column; }
+
+.trust-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 10px; }
+.arc-svg { overflow: visible; }
+.trust-num { font-family: var(--display); font-size: 24px; font-weight: 900; text-align: center; }
+.trust-status { font-family: var(--mono); font-size: 8px; letter-spacing: 0.12em; padding: 3px 10px; border-radius: 2px; border: 1px solid; }
+
+.viral-body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 12px; gap: 10px; }
+.vbar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.vbar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.viral-labels { display: flex; justify-content: space-between; align-items: center; }
+.viral-num { font-family: var(--display); font-size: 26px; font-weight: 900; }
+.vlevel { font-family: var(--mono); font-size: 8px; letter-spacing: 0.12em; padding: 2px 7px; border-radius: 2px; border: 1px solid; }
+.viral-alert { font-family: var(--mono); font-size: 9px; color: var(--red); letter-spacing: 0.1em; text-align: center; animation: blink 0.8s infinite; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Right column */
+.right-col { display: flex; flex-direction: column; gap: 1px; background: var(--border); }
+.actions-panel { background: var(--panel); display: flex; flex-direction: column; flex: 0 0 auto; }
+.crisis-badge { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; padding: 6px 14px; display: flex; align-items: center; gap: 7px; font-weight: 700; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.crisis-dot { width: 8px; height: 8px; border-radius: 50%; }
+.action-grid { padding: 8px; display: flex; flex-direction: column; gap: 5px; }
+.abtn {
+  width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border2);
+  background: var(--surface); color: #668899; text-align: left;
+  display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 700;
+  font-family: var(--ui); letter-spacing: 0.06em; text-transform: uppercase;
+  cursor: pointer; transition: 0.18s; position: relative; overflow: hidden;
+}
+.abtn:hover:not(.disabled) { border-color: var(--ac); color: var(--text); box-shadow: 0 0 14px color-mix(in srgb, var(--ac) 25%, transparent); background: color-mix(in srgb, var(--ac) 8%, var(--surface)); }
+.abtn.disabled { opacity: 0.35; cursor: not-allowed; }
+.abtn.recommended { border-color: color-mix(in srgb, var(--ac) 60%, transparent); animation: pb 2s infinite; }
+@keyframes pb { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ac) 30%, transparent); } 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ac) 10%, transparent); } }
+.aicon { font-size: 15px; }
+.alabel { flex: 1; font-weight: 700; color: var(--text); }
+.adesc { font-family: var(--mono); font-size: 8px; color: var(--dim); display: block; font-weight: 400; text-transform: none; letter-spacing: 0.02em; }
+.arisk { font-family: var(--mono); font-size: 8px; padding: 2px 6px; border-radius: 2px; letter-spacing: 0.06em; border: 1px solid; }
+.reward-flash { padding: 6px 12px; font-family: var(--mono); font-size: 10px; border-top: 1px solid var(--border); text-align: center; transition: 0.3s; }
+
+.log-panel { flex: 1; background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.log-body { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+.log-item { display: flex; gap: 6px; padding: 3px 6px; border-radius: 3px; border-left: 2px solid transparent; font-family: var(--mono); font-size: 9px; line-height: 1.5; }
+.log-bullet { color: var(--dim); flex-shrink: 0; }
+.log-text { color: #446677; word-break: break-word; }
+.log-item.reward { border-left-color: var(--green); } .log-item.reward .log-text { color: var(--green); }
+.log-item.alert { border-left-color: var(--red); } .log-item.alert .log-text { color: var(--orange); }
+.log-item.step { border-left-color: var(--accent); } .log-item.step .log-text { color: #7eb8e8; }
+.log-item.sys .log-text { color: #556677; }
+
+/* Done overlay */
+.done-overlay { position: fixed; inset: 0; background: rgba(5,7,9,0.88); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 99; }
+.done-card { background: var(--panel); border: 1px solid var(--border2); border-radius: 8px; padding: 40px 48px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; min-width: 300px; box-shadow: 0 0 60px rgba(51,153,255,0.15); animation: slideUp 0.4s ease; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } }
+.done-icon { font-size: 48px; filter: drop-shadow(0 0 16px var(--accent)); }
+.done-card h2 { font-family: var(--display); font-size: 16px; letter-spacing: 0.15em; }
+.done-score-lbl { font-family: var(--mono); font-size: 9px; color: var(--dim); letter-spacing: 0.2em; }
+.done-score-val { font-family: var(--display); font-size: 48px; font-weight: 900; color: var(--accent); filter: drop-shadow(0 0 12px #3399ff88); }
+.done-new-btn { padding: 10px 24px; border: 1px solid #3399ff66; background: rgba(51,153,255,0.1); color: var(--accent); font-family: var(--mono); font-size: 11px; font-weight: 700; border-radius: 4px; cursor: pointer; letter-spacing: 0.1em; transition: 0.2s; }
+.done-new-btn:hover { background: rgba(51,153,255,0.22); }
+
+::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand">
+      <div class="brand-icon">◈</div>
+      <div>
+        <h1>REPUTATION OS</h1>
+        <span class="brand-sub">Digital Crisis Intelligence Platform</span>
+      </div>
+    </div>
+    <div class="top-metrics">
+      <div class="metric"><span class="metric-lbl">SENTIMENT</span><span class="metric-val" id="m-sent" style="color:#3dff7e">—</span></div>
+      <div class="metric"><span class="metric-lbl">TRUST</span><span class="metric-val" id="m-trust" style="color:#3dff7e">—</span></div>
+      <div class="metric"><span class="metric-lbl">VIRALITY</span><span class="metric-val" id="m-viral" style="color:#ff3333">—</span></div>
+      <div class="metric"><span class="metric-lbl">STEP</span><span class="metric-val" id="m-step" style="color:#888">0</span></div>
+    </div>
+    <div class="hdr-right">
+      <div class="task-btns">
+        <button class="task-btn active" id="tbtn-1" style="--task-c:#3dff7e" onclick="selectTask(1)"><span class="tdot"></span>T1</button>
+        <button class="task-btn" id="tbtn-2" style="--task-c:#f5c518" onclick="selectTask(2)"><span class="tdot"></span>T2</button>
+        <button class="task-btn" id="tbtn-3" style="--task-c:#ff3333" onclick="selectTask(3)"><span class="tdot"></span>T3</button>
+      </div>
+      <button class="btn" id="auto-btn" onclick="toggleAuto()">▶ AUTO</button>
+      <button class="btn" onclick="resetEnv()">↺ RESET</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left: Globe -->
+    <div class="panel">
+      <div class="plabel">CRISIS HOTSPOTS</div>
+      <div class="globe-wrap"><canvas id="globe" width="280" height="260"></canvas></div>
+      <div class="topics" id="topics"></div>
+    </div>
+
+    <!-- Center -->
+    <div class="center-col">
+      <div class="panel" style="flex:1">
+        <div class="plabel">SENTIMENT / TRUST / VIRALITY TIMELINE</div>
+        <div class="chart-area">
+          <svg class="chart" id="chart" viewBox="0 0 560 170" preserveAspectRatio="none"></svg>
+        </div>
+        <div style="display:flex;gap:16px;padding:6px 14px;border-top:1px solid #1c2535;flex-shrink:0">
+          <span style="font-family:monospace;font-size:9px;color:#555;display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#00d4ff"></span>Sentiment</span>
+          <span style="font-family:monospace;font-size:9px;color:#555;display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#3dff7e"></span>Trust</span>
+          <span style="font-family:monospace;font-size:9px;color:#555;display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ff3333"></span>Virality</span>
+        </div>
+      </div>
+      <div class="bottom-row">
+        <div class="trust-panel panel">
+          <div class="plabel">PUBLIC TRUST</div>
+          <div class="trust-body">
+            <svg class="arc-svg" viewBox="0 0 120 70" width="120" height="70">
+              <path d="M 10 65 A 50 50 0 0 1 110 65" fill="none" stroke="#1c2535" stroke-width="8" stroke-linecap="round"/>
+              <path id="arc-fill" d="M 10 65 A 50 50 0 0 1 110 65" fill="none" stroke="#3dff7e" stroke-width="8" stroke-linecap="round" stroke-dasharray="157" stroke-dashoffset="0"/>
+            </svg>
+            <div class="trust-num" id="trust-num" style="color:#3dff7e">70%</div>
+            <div class="trust-status" id="trust-status" style="color:#3dff7e;border-color:#3dff7e44">STABLE</div>
+          </div>
+        </div>
+        <div class="viral-panel panel">
+          <div class="plabel">VIRALITY INDEX</div>
+          <div class="viral-body">
+            <div class="vbar-track"><div class="vbar-fill" id="vbar" style="width:20%;background:#ff8c00"></div></div>
+            <div class="viral-labels">
+              <div class="viral-num" id="viral-num" style="color:#c8d8e8">20%</div>
+              <div class="vlevel" id="vlevel" style="color:#ff8c00;border-color:#ff8c0044">MEDIUM</div>
+            </div>
+            <div class="viral-alert" id="viral-alert" style="display:none">⚡ VIRAL SPREAD</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Actions + Log -->
+    <div class="right-col">
+      <div class="actions-panel">
+        <div class="plabel">ACTION CONSOLE</div>
+        <div class="crisis-badge" id="crisis-badge">
+          <span class="crisis-dot" id="crisis-dot" style="background:#3dff7e;box-shadow:0 0 6px #3dff7e"></span>
+          <span id="crisis-text" style="color:#3dff7e">LOW CRISIS</span>
+        </div>
+        <div class="action-grid" id="action-grid"></div>
+        <div class="reward-flash" id="reward-flash" style="color:#556677">Ready</div>
+      </div>
+      <div class="log-panel panel">
+        <div class="plabel">INTELLIGENCE FEED</div>
+        <div class="log-body" id="log"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Done overlay -->
+<div class="done-overlay" id="done-overlay" style="display:none">
+  <div class="done-card">
+    <div class="done-icon" id="done-icon">◈</div>
+    <h2 id="done-title">CRISIS MANAGED</h2>
+    <div class="done-score-lbl">FINAL SCORE</div>
+    <div class="done-score-val" id="done-score">72.5%</div>
+    <button class="done-new-btn" onclick="resetEnv()">↺ NEW EPISODE</button>
+  </div>
+</div>
+
+<script>
+// ── Simulation State ──────────────────────────────────────
+const TASKS = {
+  1: { sentiment: -0.35, trust: 0.70, virality: 0.20, misinfo: false, influencer: 0.65, maxSteps: 15, label: "Sentiment Stabilization" },
+  2: { sentiment: -0.55, trust: 0.55, virality: 0.65, misinfo: false, influencer: 0.60, maxSteps: 20, label: "Viral Outrage Control" },
+  3: { sentiment: -0.70, trust: 0.50, virality: 0.75, misinfo: true,  influencer: 0.45, maxSteps: 20, label: "Misinformation Crisis" },
+};
+
+const ACTIONS = [
+  { id: "clarification", icon: "◎", label: "CLARIFY", desc: "Kills misinfo. Best first response.", risk: "LOW", color: "#3dff7e" },
+  { id: "apology", icon: "◇", label: "APOLOGIZE", desc: "Strong in HIGH crisis; backfires in LOW.", risk: "MED", color: "#f5c518" },
+  { id: "pr_campaign", icon: "◈", label: "PR CAMPAIGN", desc: "Cuts virality sharply. Small trust cost.", risk: "LOW", color: "#3399ff" },
+  { id: "influencer_engagement", icon: "✦", label: "INFLUENCER", desc: "High risk/reward. Needs credibility ≥0.6.", risk: "HIGH", color: "#ff8c00" },
+  { id: "legal_action", icon: "⚖", label: "LEGAL", desc: "Silences spread but crushes trust.", risk: "CRIT", color: "#ff3333" },
+  { id: "ignore", icon: "◉", label: "MONITOR", desc: "Safe only in LOW crisis.", risk: "VAR", color: "#888" },
+];
+
+const RISK_COLORS = { LOW: "#3dff7e", MED: "#f5c518", HIGH: "#ff8c00", CRIT: "#ff3333", VAR: "#888" };
+
+let state = {};
+let history = [];
+let logs = [];
+let autoPlay = false;
+let autoTimer = null;
+let currentTask = 1;
+let done = false;
+let step = 0;
+
+function resetEnv() {
+  clearTimeout(autoTimer);
+  const cfg = TASKS[currentTask];
+  state = {
+    sentiment: cfg.sentiment,
+    trust: cfg.trust,
+    virality: cfg.virality,
+    misinfo: cfg.misinfo,
+    influencer: cfg.influencer,
+    maxSteps: cfg.maxSteps,
+    consecutiveIgnores: 0,
+  };
+  step = 0; done = false;
+  history = [{ step: 0, sentiment: state.sentiment, trust: state.trust, virality: state.virality }];
+  logs = [`[RESET] Task ${currentTask}: ${cfg.label}`, `[STATE] Crisis: ${getCrisisLevel()} | Misinfo: ${cfg.misinfo}`];
+  document.getElementById('done-overlay').style.display = 'none';
+  if (autoPlay) { autoPlay = false; document.getElementById('auto-btn').textContent = '▶ AUTO'; document.getElementById('auto-btn').classList.remove('on'); }
+  render();
+  addLog(`[INIT] Starting ${cfg.label}`, 'sys');
+}
+
+function selectTask(t) {
+  currentTask = t;
+  document.querySelectorAll('.task-btn').forEach((b, i) => b.classList.toggle('active', i + 1 === t));
+  resetEnv();
+}
+
+function getCrisisLevel() {
+  if (state.sentiment < -0.5 || state.virality > 0.7) return "HIGH";
+  if (state.sentiment < -0.1 || state.virality > 0.3) return "MEDIUM";
+  return "LOW";
+}
+
+function takeAction(actionId) {
+  if (done) return;
+
+  // Apply effects
+  const eff = applyAction(actionId);
+  evolve();
+  clamp();
+
+  step++;
+  history.push({ step, sentiment: state.sentiment, trust: state.trust, virality: state.virality, action: actionId });
+
+  const reward = computeReward();
+  addLog(`[STEP ${step}] → ${actionId.toUpperCase()}`, 'step');
+  addLog(`[REWARD] ${reward.toFixed(3)} — ${eff}`, 'reward');
+
+  done = step >= state.maxSteps || state.trust <= 0.05;
+  render();
+
+  if (done) endEpisode();
+  else if (autoPlay) scheduleAuto();
+}
+
+function applyAction(actionId) {
+  let msg = "";
+  if (actionId === "ignore") {
+    state.consecutiveIgnores++;
+    state.trust -= 0.03; state.virality = Math.min(1, state.virality * 1.15); state.sentiment -= 0.05;
+    msg = "Inaction worsens sentiment";
+  } else if (actionId === "clarification") {
+    state.consecutiveIgnores = 0;
+    if (state.misinfo) { state.misinfo = false; state.sentiment += 0.12; state.virality *= 0.75; state.trust += 0.04; msg = "Misinformation neutralized!"; }
+    else { state.sentiment += 0.06; state.virality *= 0.90; msg = "Clarification improves sentiment"; }
+  } else if (actionId === "apology") {
+    state.consecutiveIgnores = 0;
+    if (state.sentiment < -0.5) { state.trust += 0.06; state.sentiment += 0.10; state.virality *= 0.85; msg = "Apology well received"; }
+    else if (state.sentiment > -0.1) { state.trust -= 0.04; state.sentiment -= 0.05; state.virality *= 1.10; msg = "Apology backfired (low crisis)"; }
+    else { state.trust += 0.03; state.sentiment += 0.05; msg = "Apology has modest effect"; }
+  } else if (actionId === "pr_campaign") {
+    state.consecutiveIgnores = 0;
+    state.virality *= 0.70; state.sentiment += 0.07; state.trust += 0.04; msg = "PR campaign reduces virality";
+  } else if (actionId === "influencer_engagement") {
+    state.consecutiveIgnores = 0;
+    if (state.influencer >= 0.6) { const b = state.influencer * 0.18; state.sentiment += b; state.trust += b * 0.5; state.virality *= 0.80; msg = `Influencer success (cred=${state.influencer.toFixed(2)})`; }
+    else { state.sentiment -= 0.08; state.trust -= 0.05; state.virality = Math.min(1, state.virality * 1.20); msg = `Influencer backfired (cred=${state.influencer.toFixed(2)})`; }
+    state.influencer = Math.max(0.2, state.influencer - 0.05);
+  } else if (actionId === "legal_action") {
+    state.consecutiveIgnores = 0;
+    state.virality *= 0.60; state.trust -= 0.07; state.sentiment -= 0.05; msg = "Legal suppresses but harms trust";
+  }
+  return msg;
+}
+
+function evolve() {
+  if (state.virality > 0.3) state.virality += 0.12 * state.virality * (1 - state.virality);
+  if (state.misinfo) { state.virality = Math.min(1, state.virality * 1.08); state.sentiment -= 0.03; }
+  if (state.virality > 0.5) state.trust -= 0.04 * state.virality;
+  if (state.sentiment < 0) state.sentiment += 0.01;
+  if (step > 5 && state.virality > 0.4) { const p = 0.01 * (step / state.maxSteps); state.trust -= p; state.sentiment -= p * 0.5; }
+  state.sentiment += (Math.random() - 0.5) * 0.05;
+  state.virality += (Math.random() - 0.5) * 0.025;
+  if (Math.random() < 0.08) { const s = Math.random() * 0.1 + 0.05; state.virality = Math.min(1, state.virality + s); state.sentiment -= s * 0.5; addLog(`[EVENT] Breaking news spike! Virality +${s.toFixed(2)}`, 'alert'); }
+}
+
+function clamp() {
+  state.sentiment = Math.max(-1, Math.min(1, state.sentiment));
+  state.trust = Math.max(0, Math.min(1, state.trust));
+  state.virality = Math.max(0, Math.min(1, state.virality));
+}
+
+function computeReward() {
+  const sentR = ((state.sentiment + 1) / 2) * 0.30;
+  const trustR = state.trust * 0.35;
+  const viralR = (1 - state.virality) * 0.25;
+  const inactPen = actionId === "ignore" ? Math.min(0.15, 0.05 * state.consecutiveIgnores) : 0;
+  const collapsePen = state.trust < 0.2 ? 0.10 * (0.2 - state.trust) / 0.2 : 0;
+  return Math.max(0, Math.min(1, sentR + trustR + viralR - inactPen - collapsePen));
+}
+
+let actionId = ""; // track for reward
+const _origTakeAction = takeAction;
+function takeAction(id) { actionId = id; _origTakeAction.call(this, id); }
+
+function endEpisode() {
+  const sentAvg = history.reduce((s, h) => s + h.sentiment, 0) / history.length;
+  const trustFinal = state.trust;
+  const viralFinal = state.virality;
+  const score = Math.max(0, Math.min(1, ((sentAvg + 1) / 2) * 0.4 + trustFinal * 0.4 + (1 - viralFinal) * 0.2));
+  document.getElementById('done-score').textContent = (score * 100).toFixed(1) + "%";
+  document.getElementById('done-icon').textContent = score >= 0.7 ? "◈" : score >= 0.4 ? "◇" : "✕";
+  document.getElementById('done-icon').style.color = score >= 0.7 ? "#3dff7e" : score >= 0.4 ? "#f5c518" : "#ff3333";
+  document.getElementById('done-title').textContent = score >= 0.7 ? "CRISIS MANAGED" : score >= 0.4 ? "PARTIAL SUCCESS" : "CRISIS UNRESOLVED";
+  document.getElementById('done-overlay').style.display = 'flex';
+}
+
+function toggleAuto() {
+  autoPlay = !autoPlay;
+  const btn = document.getElementById('auto-btn');
+  btn.textContent = autoPlay ? "⏸ AUTO" : "▶ AUTO";
+  btn.classList.toggle('on', autoPlay);
+  if (autoPlay && !done) scheduleAuto();
+  else clearTimeout(autoTimer);
+}
+
+function scheduleAuto() {
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(() => {
+    if (autoPlay && !done) {
+      const action = ruleBasedDecide();
+      takeAction(action);
+    }
+  }, 1000);
+}
+
+function ruleBasedDecide() {
+  const level = getCrisisLevel();
+  if (state.misinfo) return "clarification";
+  if (level === "HIGH") return state.virality > 0.6 ? "apology" : "pr_campaign";
+  if (level === "MEDIUM") return state.virality > 0.5 ? "pr_campaign" : state.trust < 0.5 ? "influencer_engagement" : "clarification";
+  return state.sentiment < -0.2 ? "clarification" : "ignore";
+}
+
+function addLog(text, type = 'default') {
+  logs.unshift({ text, type });
+  if (logs.length > 40) logs.pop();
+  renderLog();
+}
+
+// ── Render ────────────────────────────────────────────────
+function render() {
+  renderMetrics();
+  renderCrisis();
+  renderTrust();
+  renderVirality();
+  renderChart();
+  renderActions();
+  renderTopics();
+  renderLog();
+}
+
+function renderMetrics() {
+  const sentColor = state.sentiment > 0 ? "#3dff7e" : state.sentiment > -0.3 ? "#f5c518" : "#ff3333";
+  const trustColor = state.trust > 0.6 ? "#3dff7e" : state.trust > 0.35 ? "#f5c518" : "#ff3333";
+  const viralColor = state.virality < 0.3 ? "#3dff7e" : state.virality < 0.6 ? "#ff8c00" : "#ff3333";
+  document.getElementById('m-sent').textContent = (state.sentiment >= 0 ? "+" : "") + (state.sentiment * 100).toFixed(0) + "%";
+  document.getElementById('m-sent').style.color = sentColor;
+  document.getElementById('m-trust').textContent = (state.trust * 100).toFixed(0) + "%";
+  document.getElementById('m-trust').style.color = trustColor;
+  document.getElementById('m-viral').textContent = (state.virality * 100).toFixed(0) + "%";
+  document.getElementById('m-viral').style.color = viralColor;
+  document.getElementById('m-step').textContent = step;
+}
+
+function renderCrisis() {
+  const level = getCrisisLevel();
+  const colors = { LOW: "#3dff7e", MEDIUM: "#f5c518", HIGH: "#ff3333" };
+  const c = colors[level];
+  document.getElementById('crisis-dot').style.background = c;
+  document.getElementById('crisis-dot').style.boxShadow = `0 0 6px ${c}`;
+  document.getElementById('crisis-text').textContent = level + " CRISIS";
+  document.getElementById('crisis-text').style.color = c;
+}
+
+function renderTrust() {
+  const pct = state.trust;
+  const color = pct > 0.6 ? "#3dff7e" : pct > 0.35 ? "#f5c518" : "#ff3333";
+  const arc = document.getElementById('arc-fill');
+  const totalLen = 157;
+  const dashOffset = totalLen * (1 - pct);
+  arc.style.strokeDashoffset = dashOffset;
+  arc.style.stroke = color;
+  document.getElementById('trust-num').textContent = (pct * 100).toFixed(0) + "%";
+  document.getElementById('trust-num').style.color = color;
+  const statusEl = document.getElementById('trust-status');
+  const status = pct > 0.7 ? "STRONG" : pct > 0.5 ? "STABLE" : pct > 0.3 ? "DECLINING" : "CRITICAL";
+  statusEl.textContent = status;
+  statusEl.style.color = color;
+  statusEl.style.borderColor = color + "44";
+}
+
+function renderVirality() {
+  const pct = state.virality;
+  const level = pct > 0.7 ? "CRITICAL" : pct > 0.4 ? "HIGH" : pct > 0.2 ? "MEDIUM" : "LOW";
+  const colors = { LOW: "#3dff7e", MEDIUM: "#ff8c00", HIGH: "#ff4400", CRITICAL: "#ff1111" };
+  const c = colors[level];
+  document.getElementById('vbar').style.width = (pct * 100) + "%";
+  document.getElementById('vbar').style.background = c;
+  document.getElementById('viral-num').textContent = (pct * 100).toFixed(0) + "%";
+  document.getElementById('vlevel').textContent = level;
+  document.getElementById('vlevel').style.color = c;
+  document.getElementById('vlevel').style.borderColor = c + "44";
+  document.getElementById('viral-alert').style.display = pct > 0.6 ? 'block' : 'none';
+}
+
+function renderChart() {
+  const svg = document.getElementById('chart');
+  if (history.length < 2) { svg.innerHTML = '<text x="280" y="90" fill="#2a3a4a" text-anchor="middle" font-family="monospace" font-size="11">Waiting for data...</text>'; return; }
+
+  const W = 560, H = 170, PAD = 20;
+  const n = history.length;
+  const xScale = (i) => PAD + (i / (Math.max(n - 1, 1))) * (W - PAD * 2);
+  const yScale = (v) => H - PAD - (v * (H - PAD * 2));
+
+  const sentPts = history.map((h, i) => [xScale(i), yScale((h.sentiment + 1) / 2)]);
+  const trustPts = history.map((h, i) => [xScale(i), yScale(h.trust)]);
+  const viralPts = history.map((h, i) => [xScale(i), yScale(h.virality)]);
+
+  const makePath = pts => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+  const makeArea = (pts, h) => makePath(pts) + ` L ${pts[pts.length-1][0]} ${H-PAD} L ${pts[0][0]} ${H-PAD} Z`;
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#00d4ff" stop-opacity="0.25"/><stop offset="100%" stop-color="#00d4ff" stop-opacity="0"/></linearGradient>
+      <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3dff7e" stop-opacity="0.2"/><stop offset="100%" stop-color="#3dff7e" stop-opacity="0"/></linearGradient>
+      <linearGradient id="g3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ff3333" stop-opacity="0.18"/><stop offset="100%" stop-color="#ff3333" stop-opacity="0"/></linearGradient>
+    </defs>
+    <line x1="${PAD}" y1="${yScale(0.5)}" x2="${W-PAD}" y2="${yScale(0.5)}" stroke="#ffffff0a" stroke-width="1" stroke-dasharray="4 4"/>
+    <path d="${makeArea(viralPts)}" fill="url(#g3)"/>
+    <path d="${makeArea(trustPts)}" fill="url(#g2)"/>
+    <path d="${makeArea(sentPts)}" fill="url(#g1)"/>
+    <path d="${makePath(viralPts)}" fill="none" stroke="#ff3333" stroke-width="1.5"/>
+    <path d="${makePath(trustPts)}" fill="none" stroke="#3dff7e" stroke-width="1.5" stroke-dasharray="5 3"/>
+    <path d="${makePath(sentPts)}" fill="none" stroke="#00d4ff" stroke-width="2"/>
+    ${sentPts.map((p, i) => history[i].action ? `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#fff" stroke="#00d4ff" stroke-width="2"/>` : '').join('')}
+  `;
+}
+
+function renderActions() {
+  const level = getCrisisLevel();
+  const recommended = {
+    LOW: ["clarification", "ignore"],
+    MEDIUM: ["clarification", "pr_campaign"],
+    HIGH: ["apology", "pr_campaign", "clarification"],
+  }[level];
+
+  document.getElementById('action-grid').innerHTML = ACTIONS.map(a => `
+    <button class="abtn ${recommended.includes(a.id) ? 'recommended' : ''} ${done ? 'disabled' : ''}"
+      style="--ac:${a.color}"
+      onclick="takeAction('${a.id}')"
+      ${done ? 'disabled' : ''}>
+      <span class="aicon">${a.icon}</span>
+      <span class="alabel">${a.label}<span class="adesc">${a.desc}</span></span>
+      <span class="arisk" style="color:${RISK_COLORS[a.risk]};border-color:${RISK_COLORS[a.risk]}44">${a.risk}</span>
+    </button>
+  `).join('');
+}
+
+const TOPICS_BY_LEVEL = {
+  HIGH: ["#BrandFail", "#CorporateGreed", "#Boycott", "#NeverAgain", "#Expose"],
+  MEDIUM: ["#Statement", "#Update", "#Trending", "#Response", "#PR"],
+  LOW: ["#Moving Forward", "#WeHearYou", "#Transparency", "#Update"],
+};
+const MISINFO_TOPICS = ["#FakeNews", "#Misleading", "#TruthOut", "#Debunked"];
+
+function renderTopics() {
+  const level = getCrisisLevel();
+  let topics = [...(TOPICS_BY_LEVEL[level] || [])].slice(0, 3);
+  if (state.misinfo) topics = [MISINFO_TOPICS[Math.floor(Math.random() * 2)], ...topics].slice(0, 4);
+  document.getElementById('topics').innerHTML = topics.map((t, i) =>
+    `<span class="topic" style="animation-delay:${i * 0.1}s">${t}</span>`
+  ).join('');
+}
+
+function renderLog() {
+  document.getElementById('log').innerHTML = logs.map(l => `
+    <div class="log-item ${l.type}">
+      <span class="log-bullet">▸</span>
+      <span class="log-text">${l.text}</span>
+    </div>
+  `).join('');
+}
+
+// ── Globe (pure Canvas) ───────────────────────────────────
+const globeCanvas = document.getElementById('globe');
+const ctx = globeCanvas.getContext('2d');
+let globeAngle = 0;
+
+const HOTSPOTS = [
+  [40.7, -74], [51.5, -0.1], [35.7, 139.7],
+  [48.9, 2.3], [-33.9, 151.2], [1.3, 103.8],
+];
+
+function latLonTo2D(lat, lon, cx, cy, r, angle) {
+  const phi = (90 - lat) * Math.PI / 180;
+  const theta = (lon + 180) * Math.PI / 180 + angle;
+  const x3 = -r * Math.sin(phi) * Math.cos(theta);
+  const y3 = r * Math.cos(phi);
+  const z3 = r * Math.sin(phi) * Math.sin(theta);
+  if (z3 < 0) return null;
+  return [cx + x3 * 0.85, cy + y3];
+}
+
+function drawGlobe() {
+  const W = globeCanvas.width, H = globeCanvas.height;
+  const cx = W / 2, cy = H / 2, r = Math.min(W, H) * 0.42;
+  ctx.clearRect(0, 0, W, H);
+
+  const level = getCrisisLevel();
+  const glowColors = { LOW: "#1a4080", MEDIUM: "#804020", HIGH: "#801010" };
+  const dotColors = { LOW: "#3399ff", MEDIUM: "#ff8c00", HIGH: "#ff3333" };
+  const gc = glowColors[level], dc = dotColors[level];
+
+  // Glow
+  const grad = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, r * 1.2);
+  grad.addColorStop(0, gc + "33"); grad.addColorStop(1, "transparent");
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.2, 0, Math.PI * 2);
+  ctx.fillStyle = grad; ctx.fill();
+
+  // Globe body
+  const bgrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+  bgrad.addColorStop(0, level === "HIGH" ? "#2a1010" : level === "MEDIUM" ? "#1a1808" : "#0d1a2e");
+  bgrad.addColorStop(1, "#050709");
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = bgrad; ctx.fill();
+  ctx.strokeStyle = level === "HIGH" ? "#401010" : "#1a2a40";
+  ctx.lineWidth = 1.5; ctx.stroke();
+
+  // Grid lines
+  ctx.globalAlpha = 0.12; ctx.strokeStyle = "#4488cc"; ctx.lineWidth = 0.5;
+  for (let lat = -60; lat <= 60; lat += 30) {
+    ctx.beginPath();
+    for (let lon = -180; lon <= 180; lon += 5) {
+      const p = latLonTo2D(lat, lon, cx, cy, r, globeAngle);
+      if (p) { lon === -180 ? ctx.moveTo(...p) : ctx.lineTo(...p); }
+    }
+    ctx.stroke();
+  }
+  for (let lon = 0; lon < 360; lon += 30) {
+    ctx.beginPath();
+    for (let lat = -90; lat <= 90; lat += 5) {
+      const p = latLonTo2D(lat, lon, cx, cy, r, globeAngle);
+      if (p) { lat === -90 ? ctx.moveTo(...p) : ctx.lineTo(...p); }
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Hotspots
+  const numActive = Math.max(2, Math.ceil(state.virality * HOTSPOTS.length));
+  const t = Date.now() / 1000;
+  HOTSPOTS.slice(0, numActive).forEach((hs, i) => {
+    const p = latLonTo2D(hs[0], hs[1], cx, cy, r, globeAngle);
+    if (!p) return;
+    const pulse = 0.6 + 0.4 * Math.sin(t * 3 + i);
+    const size = (3 + state.virality * 4) * pulse;
+
+    // Pulse ring
+    ctx.beginPath(); ctx.arc(p[0], p[1], size * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = dc; ctx.globalAlpha = 0.2 * pulse; ctx.lineWidth = 1; ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Dot
+    ctx.beginPath(); ctx.arc(p[0], p[1], size, 0, Math.PI * 2);
+    ctx.fillStyle = dc; ctx.globalAlpha = 0.85 * pulse; ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+
+  globeAngle += 0.004;
+  requestAnimationFrame(drawGlobe);
+}
+
+// ── Init ──────────────────────────────────────────────────
+resetEnv();
+drawGlobe();
+</script>
+</body>
+</html>
