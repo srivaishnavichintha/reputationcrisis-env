@@ -112,52 +112,40 @@ async def health():
     """Health check endpoint."""
     return {"status": "ok", "version": "1.0.0"}
 
-
 @app.post("/reset")
 async def reset(request: Request):
     try:
         body = await request.json()
-    except:
+    except Exception:
         body = {}
 
     session_id = body.get("session_id", "default")
     task_name = body.get("task_name")
     noise_seed = body.get("noise_seed")
 
-    try:
-        if task_name and task_name in TASKS:
-            task = TASKS[task_name]
-            env = ReputationCrisisEnv(
-                max_steps=task.max_steps,
-                noise_seed=noise_seed,
-                scenario_config=task.scenario_config,
-            )
-        else:
-            env = ReputationCrisisEnv(noise_seed=noise_seed)
+    # ← REMOVED the try/except that was hiding errors
+    if task_name and task_name in TASKS:
+        task = TASKS[task_name]
+        env = ReputationCrisisEnv(
+            max_steps=task.max_steps,
+            noise_seed=noise_seed,
+            scenario_config=task.scenario_config,
+        )
+    else:
+        env = ReputationCrisisEnv(noise_seed=noise_seed)
 
-        _envs[session_id] = env
-        obs = env.reset()
+    _envs[session_id] = env
+    obs = env.reset()
 
-        # SAFE RETURN (no crash possible)
-        return {
-            "sentiment_score": float(obs.sentiment_score),
-            "crisis_level": str(obs.crisis_level),
-            "trending_topics": list(obs.trending_topics),
-            "public_trust": float(obs.public_trust),
-            "virality_index": float(obs.virality_index),
-            "time_step": int(obs.time_step),
-        }
+    return {
+        "sentiment_score": float(obs.sentiment_score),
+        "crisis_level": str(obs.crisis_level),
+        "trending_topics": list(obs.trending_topics),
+        "public_trust": float(obs.public_trust),
+        "virality_index": float(obs.virality_index),
+        "time_step": int(obs.time_step),
+    }
 
-    except Exception as e:
-       
-        return {
-            "sentiment_score": 0.0,
-            "crisis_level": "LOW",
-            "trending_topics": [],
-            "public_trust": 1.0,
-            "virality_index": 0.0,
-            "time_step": 0,
-        }
 
 @app.post("/step", response_model=StepResponse)
 async def step(request: StepRequest):
@@ -223,6 +211,17 @@ async def run_task(request: RunTaskRequest):
     )
 
 
+
+@app.get("/debug")
+async def debug():
+    import sys, os
+    return {
+        "python": sys.version,
+        "cwd": os.getcwd(),
+        "files": os.listdir("."),
+        "frontend_dist_exists": os.path.exists("frontend/dist"),
+        "frontend_index_exists": os.path.exists("frontend/dist/index.html"),
+    }
 
 @app.get("/")
 def serve_frontend():

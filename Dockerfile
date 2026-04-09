@@ -42,26 +42,31 @@
 # # Run FastAPI server
 # CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
 
-
-
 FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y gcc nodejs npm && rm -rf /var/lib/apt/lists/*
+# Install system deps including Node
+RUN apt-get update && apt-get install -y gcc nodejs npm curl && rm -rf /var/lib/apt/lists/*
 
-COPY . .
-
+# Install Python deps first (layer caching)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 🔥 Build frontend
+# Copy everything
+COPY . .
+
+# Build frontend
 WORKDIR /app/frontend
-RUN npm install
-RUN npm run build
+RUN npm install && npm run build
+
+# Verify the build output exists
+RUN ls -la /app/frontend/dist/
 
 WORKDIR /app
 
+# HF Spaces requires port 7860
 ENV PORT=7860
 EXPOSE 7860
 
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "7860"]
