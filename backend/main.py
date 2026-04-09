@@ -29,7 +29,12 @@ app = FastAPI(
     description="OpenEnv-compliant environment for AI-powered PR crisis simulation",
     version="1.0.0",
 )
-app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+
+ASSETS_DIR = "frontend/dist/assets"
+FRONTEND_INDEX = "frontend/dist/index.html"
+
+if os.path.isdir(ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 # CORS for frontend
 app.add_middleware(
@@ -112,6 +117,8 @@ async def health():
     """Health check endpoint."""
     return {"status": "ok", "version": "1.0.0"}
 
+
+
 @app.post("/reset")
 async def reset(request: Request):
     try:
@@ -120,32 +127,39 @@ async def reset(request: Request):
         body = {}
 
     session_id = body.get("session_id", "default")
-    task_name = body.get("task_name")
+    task_name  = body.get("task_name")
     noise_seed = body.get("noise_seed")
 
-    # ← REMOVED the try/except that was hiding errors
-    if task_name and task_name in TASKS:
-        task = TASKS[task_name]
-        env = ReputationCrisisEnv(
-            max_steps=task.max_steps,
-            noise_seed=noise_seed,
-            scenario_config=task.scenario_config,
-        )
-    else:
-        env = ReputationCrisisEnv(noise_seed=noise_seed)
+    try:
+        if task_name and task_name in TASKS:
+            task = TASKS[task_name]
+            env = ReputationCrisisEnv(
+                max_steps=task.max_steps,
+                noise_seed=noise_seed,
+                scenario_config=task.scenario_config,
+            )
+        else:
+            env = ReputationCrisisEnv(noise_seed=noise_seed)
 
-    _envs[session_id] = env
-    obs = env.reset()
+        _envs[session_id] = env
+        obs = env.reset()
 
-    return {
-        "sentiment_score": float(obs.sentiment_score),
-        "crisis_level": str(obs.crisis_level),
-        "trending_topics": list(obs.trending_topics),
-        "public_trust": float(obs.public_trust),
-        "virality_index": float(obs.virality_index),
-        "time_step": int(obs.time_step),
-    }
+        return {
+            "sentiment_score": float(obs.sentiment_score),
+            "crisis_level":    str(obs.crisis_level),
+            "trending_topics": list(obs.trending_topics),
+            "public_trust":    float(obs.public_trust),
+            "virality_index":  float(obs.virality_index),
+            "time_step":       int(obs.time_step),
+        }
 
+    except Exception as e:
+        import traceback
+        # Return 500 WITH the real error so you can read it in HF logs / browser
+        raise HTTPException(status_code=500, detail={
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        })
 
 @app.post("/step", response_model=StepResponse)
 async def step(request: StepRequest):
@@ -225,9 +239,12 @@ async def debug():
 
 @app.get("/")
 def serve_frontend():
-    return FileResponse("frontend/dist/index.html")
-
+    if os.path.exists(FRONTEND_INDEX):
+        return FileResponse(FRONTEND_INDEX)
+    return {"status": "API running, frontend not built"}
 
 @app.get("/{full_path:path}")
 def serve_all(full_path: str):
-    return FileResponse("frontend/dist/index.html")
+    if os.path.exists(FRONTEND_INDEX):
+        return FileResponse(FRONTEND_INDEX)
+    return {"status": "API running, frontend not built"}

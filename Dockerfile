@@ -46,27 +46,24 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system deps including Node
-RUN apt-get update && apt-get install -y gcc nodejs npm curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y gcc nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps first (layer caching)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy everything
 COPY . .
 
-# Build frontend
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Build frontend — fail loudly if it breaks
 WORKDIR /app/frontend
 RUN npm install && npm run build
 
-# Verify the build output exists
-RUN ls -la /app/frontend/dist/
+# Verify the build output exists (catches silent failures)
+RUN test -d /app/frontend/dist/assets || (echo "ERROR: Frontend build failed" && exit 1)
 
 WORKDIR /app
 
-# HF Spaces requires port 7860
+# Hugging Face Spaces requires port 7860
 ENV PORT=7860
 EXPOSE 7860
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT} --log-level debug"]

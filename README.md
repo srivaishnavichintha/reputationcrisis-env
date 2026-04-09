@@ -2,7 +2,7 @@
 title: Digital Reputation Crisis Manager
 emoji: 🚀
 colorFrom: red
-colorTo: orange
+colorTo: blue
 sdk: docker
 pinned: false
 ---
