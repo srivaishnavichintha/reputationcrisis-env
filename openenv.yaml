@@ -1,0 +1,57 @@
+name: digital_reputation_crisis_manager
+version: "1.0.0"
+description: "OpenEnv-compliant AI environment for simulating real-world PR crisis management with viral outrage propagation, misinformation spread, and trust dynamics."
+
+observation:
+  fields:
+    - name: sentiment_score
+      type: float
+      range: [-1.0, 1.0]
+      description: "Public sentiment (-1=outrage, +1=praise)"
+    - name: crisis_level
+      type: string
+      values: [LOW, MEDIUM, HIGH]
+      description: "Derived crisis severity"
+    - name: trending_topics
+      type: list
+      description: "Active hashtags and topics"
+    - name: public_trust
+      type: float
+      range: [0.0, 1.0]
+      description: "Brand trust index"
+    - name: virality_index
+      type: float
+      range: [0.0, 1.0]
+      description: "Spread velocity"
+    - name: time_step
+      type: int
+      description: "Current episode step"
+
+action:
+  fields:
+    - name: action_type
+      type: string
+      values: [ignore, apology, clarification, pr_campaign, influencer_engagement, legal_action]
+      description: "PR response action"
+
+reward:
+  type: float
+  description: "Dense reward combining sentiment, trust, and virality components"
+
+tasks:
+  - name: task_1_sentiment_stabilization
+    difficulty: EASY
+    description: "Stabilize sentiment above 0.0 after a minor product issue"
+  - name: task_2_viral_outrage_control
+    difficulty: MEDIUM
+    description: "Reduce virality below 0.30 and recover trust above 0.50"
+  - name: task_3_misinformation_crisis
+    difficulty: HARD
+    description: "Prevent trust collapse and neutralize coordinated misinformation"
+
+endpoints:
+  base_url: "http://localhost:7860"
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+  health: GET /health
