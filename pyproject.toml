@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-server = "server.app:app"
+serve = "server.app:main" 
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend", "server"]

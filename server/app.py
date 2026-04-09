@@ -1,3 +1,18 @@
-# server/app.py  ← NEW FILE
-# OpenEnv requires this path. We just re-export the existing app.
-from backend.main import app  # noqa: F401
+# server/app.py
+
+from backend.main import app
+import uvicorn
+
+
+def main():
+    """Entry point for OpenEnv"""
+    uvicorn.run(
+        "backend.main:app",
+        host="0.0.0.0",
+        port=7860,
+        reload=False
+    )
+
+
+if __name__ == "__main__":
+    main()
