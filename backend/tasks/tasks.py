@@ -260,7 +260,7 @@ def _grade_task2(task: TaskDefinition, state, env) -> Tuple[float, Dict[str, flo
         + w["trust_recovery"] * trust_score
         + w["response_time"] * response_time_score
     )
-    return round(max(0.0, min(1.0, score)), 4), breakdown
+    return round(max(0.001, min(0.999, score)), 4), breakdown
 
 
 def _grade_task3(task: TaskDefinition, state, env) -> Tuple[float, Dict[str, float]]:
@@ -312,7 +312,7 @@ def _grade_task3(task: TaskDefinition, state, env) -> Tuple[float, Dict[str, flo
         + w["trust_stability"] * trust_stability_score
         + w["decision_quality"] * decision_score
     )
-    return round(max(0.0, min(1.0, score)), 4), breakdown
+    return round(max(0.001, min(0.999, score)), 4), breakdown
 
 
 def _check_success(task: TaskDefinition, obs: Observation, state) -> bool:
