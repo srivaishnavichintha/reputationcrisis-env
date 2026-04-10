@@ -84,7 +84,7 @@ class StepResponse(BaseModel):
 
 class RunTaskRequest(BaseModel):
     task_name: str
-    agent_mode: str = "rule_based"
+    agent_mode: str = "llm_with_fallback"
     noise_seed: Optional[int] = 42
 
 
@@ -205,7 +205,10 @@ async def run_task(request: RunTaskRequest):
             detail=f"Task '{request.task_name}' not found. Available: {list(TASKS.keys())}"
         )
 
-    agent = create_agent(request.agent_mode)
+    # Use LLM agent when hackathon injects API_KEY, so calls go through their proxy.
+    api_key = os.environ.get("API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+    effective_mode = "llm_with_fallback" if api_key else request.agent_mode
+    agent = create_agent(effective_mode)
     result: EpisodeResult = run_episode(
         task_name=request.task_name,
         agent_fn=agent,

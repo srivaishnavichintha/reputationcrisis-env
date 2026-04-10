@@ -142,7 +142,8 @@ Respond with ONLY the action name, nothing else."""
         self.fallback = fallback or RuleBasedAgent()
         self.api_base_url = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
         self.model_name = os.getenv("MODEL_NAME", "gpt-4o-mini")
-        self.api_key = os.getenv("OPENAI_API_KEY", "")
+        # Hackathon injects API_KEY; also support OPENAI_API_KEY for local dev
+        self.api_key = os.getenv("API_KEY", os.getenv("OPENAI_API_KEY", ""))
         self._client = None
 
     def _get_client(self):

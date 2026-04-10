@@ -35,7 +35,9 @@ from backend.agents.baseline_agent import create_agent, RuleBasedAgent, LLMAgent
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# Hackathon injects API_KEY; fall back to OPENAI_API_KEY for local dev
+API_KEY = os.getenv("API_KEY", os.getenv("OPENAI_API_KEY", ""))
+OPENAI_API_KEY = API_KEY  # keep alias for backward compat
 
 
 # ─────────────────────────────────────────────────────────────
@@ -124,7 +126,7 @@ def run_task_verbose(task_name: str, agent_fn, noise_seed: int = 42) -> EpisodeR
 
 def main():
     parser = argparse.ArgumentParser(description="Digital Reputation Crisis Manager - Inference")
-    parser.add_argument("--agent", default="rule_based", choices=["rule_based", "llm", "llm_with_fallback"])
+    parser.add_argument("--agent", default="llm_with_fallback", choices=["rule_based", "llm", "llm_with_fallback"])
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--tasks", nargs="+", default=None, help="Specific tasks to run")
     args = parser.parse_args()
@@ -139,8 +141,8 @@ def main():
 
     # Configure LLM if needed
     if args.agent in ("llm", "llm_with_fallback"):
-        if not OPENAI_API_KEY:
-            print("[WARNING] OPENAI_API_KEY not set. Falling back to rule-based.")
+        if not API_KEY:
+            print("[WARNING] API_KEY not set. Falling back to rule-based.")
             args.agent = "rule_based"
         else:
             print(f"[INFO] Using LLM: {MODEL_NAME} at {API_BASE_URL}")
