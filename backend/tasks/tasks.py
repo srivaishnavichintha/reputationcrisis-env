@@ -262,7 +262,7 @@ def _grade_task1(
         + w["trust_recovery"]      * trust_recovery
         + w["response_efficiency"] * response_efficiency
     )
-    return round(score, 4), breakdown
+    return float(score), breakdown
 
 
 # ─────────────────────────────────────────────────────────────
@@ -323,7 +323,7 @@ def _grade_task2(
         + w["trust_recovery"]  * trust_score
         + w["response_time"]   * response_time_score
     )
-    return round(score, 4), breakdown
+    return float(score), breakdown
 
 
 # ─────────────────────────────────────────────────────────────
@@ -395,7 +395,7 @@ def _grade_task3(
         + w["trust_stability"]      * trust_stability_score
         + w["decision_quality"]     * decision_score
     )
-    return round(score, 4), breakdown
+    return float(score), breakdown
 
 
 # ─────────────────────────────────────────────────────────────
