@@ -20,6 +20,7 @@ from .models import (
 )
 
 
+
 # ─────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────
@@ -58,7 +59,16 @@ TRENDING_TOPIC_POOLS = {
     "neutral": ["#Statement", "#Update", "#Response", "#Press Release", "#PR"],
     "viral": ["#Trending", "#BreakingNews", "#MustRead", "#ShareThis", "#GoViral"],
 }
+_LO = 1e-4
+_HI = 1 - 1e-6
 
+def _safe(v: float) -> float:
+    return max(_LO, min(_HI, v))
+def _safe_unit(v: float) -> float:
+    return max(0.0, min(1.0, v))
+
+def _safe_sentiment(v: float) -> float:
+    return max(-1.0 + 1e-6, min(1.0 - 1e-6, v))
 
 # ─────────────────────────────────────────────────────────────
 # MAIN ENVIRONMENT CLASS
@@ -226,7 +236,7 @@ class ReputationCrisisEnv:
         if action == ActionType.IGNORE:
             # Inaction penalty: trust decays extra, virality grows
             self._trust -= 0.03
-            self._virality = min(1.0, self._virality * 1.15)
+            self._virality = _safe(self._virality + 0.1)
             self._sentiment -= 0.05
             log += " → Inaction worsens sentiment"
 
@@ -240,7 +250,7 @@ class ReputationCrisisEnv:
             elif self._sentiment > -0.1:  # Low crisis — backfire
                 self._trust -= 0.04
                 self._sentiment -= 0.05
-                self._virality = min(1.0, self._virality * 1.10)
+                self._virality = _safe(self._virality + 0.1)
                 log += " → Apology backfired (low crisis)"
             else:  # Medium effect
                 self._trust += 0.03
@@ -281,7 +291,7 @@ class ReputationCrisisEnv:
                 # Low credibility: backfire
                 self._sentiment -= 0.08
                 self._trust -= 0.05
-                self._virality = min(1.0, self._virality * 1.20)
+                self._virality = _safe(self._virality + 0.1)
                 log += f" → Influencer backfired (credibility={self._influencer_credibility:.2f})"
             # Credibility erodes slightly with each use
             self._influencer_credibility = max(0.2, self._influencer_credibility - 0.05)
@@ -305,11 +315,11 @@ class ReputationCrisisEnv:
         # Virality grows exponentially if not controlled
         if self._virality > 0.3:
             viral_growth = VIRAL_GROWTH_RATE * self._virality * (1 - self._virality)
-            self._virality += viral_growth
+            self._virality = _safe(self._virality + viral_growth)
 
         # Misinformation accelerates virality
         if self._misinformation_active:
-            self._virality = min(1.0, self._virality * 1.08)
+            self._virality = _safe(self._virality + 0.1)
             self._sentiment -= 0.03  # Misinformation poisons sentiment
 
         # Trust decays due to high virality (exposure effect)
@@ -331,30 +341,28 @@ class ReputationCrisisEnv:
         self._virality += random.gauss(0, VIRALITY_NOISE_STD)
 
     def _maybe_inject_event(self):
-        """Randomly inject breaking news events to simulate real-world surprises."""
         roll = random.random()
 
-        if roll < 0.08:  # 8% chance of negative breaking news
+        if roll < 0.08:
             spike = random.uniform(0.05, 0.15)
-            self._virality = min(1.0, self._virality + spike)
+            self._virality = _safe(self._virality + spike)
             self._sentiment -= spike * 0.5
             self._events_log.append(f"[EVENT] Breaking negative news spike! Virality +{spike:.2f}")
 
-        elif roll < 0.12:  # 4% chance of positive news
+        elif roll < 0.12:
             boost = random.uniform(0.03, 0.08)
             self._sentiment += boost
             self._trust += boost * 0.3
             self._events_log.append(f"[EVENT] Positive media coverage! Sentiment +{boost:.2f}")
 
-        elif roll < 0.15:  # 3% chance of influencer credibility boost
+        elif roll < 0.15:
             self._influencer_credibility = min(1.0, self._influencer_credibility + 0.1)
             self._events_log.append("[EVENT] Influencer credibility boosted by endorsement")
-
+    
     def _clamp_state(self):
-        """Ensure all state values remain in valid ranges."""
-        self._sentiment = max(-1.0, min(1.0, self._sentiment))
-        self._trust = max(0.0, min(1.0, self._trust))
-        self._virality = max(0.0, min(1.0, self._virality))
+        self._sentiment = _safe_sentiment(self._sentiment)
+        self._trust = _safe_unit(self._trust)
+        self._virality = _safe_unit(self._virality)
 
     # ─────────────────────────────────────────────────────────
     # Reward Function
@@ -428,7 +436,6 @@ class ReputationCrisisEnv:
 
         # Normalize to [0, 1]
         final_reward = max(0.0, min(1.0, raw_reward))
-
         # Build reason string
         reason_parts = []
         if sentiment_reward > 0.15:
@@ -446,7 +453,7 @@ class ReputationCrisisEnv:
 
         reason = "; ".join(reason_parts) if reason_parts else "baseline reward"
 
-        return Reward(value=round(final_reward, 4), reason=reason, breakdown=breakdown)
+        return Reward(value=_safe(round(final_reward, 4)), reason=reason, breakdown=breakdown)
 
     # ─────────────────────────────────────────────────────────
     # Helpers
