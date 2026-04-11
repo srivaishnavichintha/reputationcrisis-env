@@ -59,13 +59,14 @@ TRENDING_TOPIC_POOLS = {
     "neutral": ["#Statement", "#Update", "#Response", "#Press Release", "#PR"],
     "viral": ["#Trending", "#BreakingNews", "#MustRead", "#ShareThis", "#GoViral"],
 }
-_LO = 1e-4
+_LO = 1e-6
 _HI = 1 - 1e-6
 
 def _safe(v: float) -> float:
     return max(_LO, min(_HI, v))
 def _safe_unit(v: float) -> float:
-    return max(0.0, min(1.0, v))
+    """Clamp to (0, 1) exclusive so graders never receive exact 0.0 or 1.0."""
+    return max(_LO, min(_HI, v))
 
 def _safe_sentiment(v: float) -> float:
     return max(-1.0 + 1e-6, min(1.0 - 1e-6, v))
