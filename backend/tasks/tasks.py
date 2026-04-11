@@ -19,21 +19,33 @@ from backend.env.models import Observation, Action, ActionType
 #   never 0.0, never 1.0, no matter what value goes in.
 # ─────────────────────────────────────────────────────────────
 
-_LO: float = 1e-4   # 0.0001  — round(0.0001, 4) == 0.0001  ✓ strictly > 0
-_HI: float = 1 - 1e-4  # 0.9999 — round(0.9999, 4) == 0.9999  ✓ strictly < 1
+_LO: float = 1e-6   # strictly > 0, survives round(..., 4) as 0.0 → use 1e-4 for display
+_HI: float = 1 - 1e-6  # strictly < 1
+
+# Required safe_score function (exact interface specified by OpenEnv grading system)
+def safe_score(score: float) -> float:
+    if score is None:
+        return 0.5
+    if isinstance(score, float):
+        if score != score:  # NaN check
+            return 0.5
+        if score == float("inf") or score == float("-inf"):
+            return 0.5
+    # strict clamp
+    eps = 1e-6
+    score = max(eps, min(1 - eps, score))
+    return score
 
 def _c(v: float) -> float:
-    if v is None or v != v:  # None or NaN
-        return _LO
+    """Internal clamp — delegates to safe_score for consistent behaviour."""
     try:
         v = float(v)
-    except:
-        return _LO
-    return max(_LO, min(_HI, v))
+    except Exception:
+        return 0.5
+    return safe_score(v)
 
 def _safe_score(v: float) -> float:
-    v = _c(v)
-    return float(min(max(v, _LO), _HI))
+    return safe_score(v)
 
 # Legacy aliases so nothing breaks if external code imports them
 _clamp_sub   = _c
@@ -272,7 +284,8 @@ def _grade_task1(
         + w["trust_recovery"]      * trust_recovery
         + w["response_efficiency"] * response_efficiency
     )
-    score = _c(raw_score)
+    print("RAW SCORE:", raw_score)
+    score = safe_score(raw_score)
     return score, breakdown
 
 
@@ -335,7 +348,8 @@ def _grade_task2(
         + w["trust_recovery"]  * trust_score
         + w["response_time"]   * response_time_score
     )
-    score = _c(raw_score)
+    print("RAW SCORE:", raw_score)
+    score = safe_score(raw_score)
     return score, breakdown
 
 
@@ -359,8 +373,10 @@ def _grade_task3(
             else len(state.action_history)
         )
         total       = len(state.action_history) or 1
-        speed_bonus = _c(1.0 - first_clarify / total)
-        misinfo_raw = 0.70 + 0.30 * speed_bonus    # can approach 1.0
+        # Protect against division by zero: total is always >= 1 above
+        speed_bonus = safe_score(1.0 - first_clarify / total)
+        # 0.70 + 0.30 * speed_bonus: speed_bonus < 1, so product < 1.0 always
+        misinfo_raw = 0.70 + 0.30 * speed_bonus
     else:
         clarify_attempts = len(clarification_steps)
         misinfo_raw      = min(0.15, 0.05 + clarify_attempts * 0.03)
@@ -409,7 +425,8 @@ def _grade_task3(
         + w["trust_stability"]      * trust_stability_score
         + w["decision_quality"]     * decision_score
     )
-    score = _c(raw_score)
+    print("RAW SCORE:", raw_score)
+    score = safe_score(raw_score)
     return score, breakdown
 
 
