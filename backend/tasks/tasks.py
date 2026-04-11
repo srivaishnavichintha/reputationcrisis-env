@@ -23,8 +23,14 @@ _LO: float = 1e-4   # 0.0001
 _HI: float = 1 - 1e-6
 
 def _c(v: float) -> float:
-    """Clamp to strict open interval (0, 1)."""
-    return float(max(_LO, min(_HI, v)))
+    """Clamp to strict open interval (0, 1) with float safety."""
+    if v != v:  # NaN check
+        return _LO
+    v = max(_LO, min(_HI, v))
+    return float(v)
+def _safe_score(v: float) -> float:
+    v = _c(v)
+    return float(min(max(v, _LO), _HI))
 
 # Legacy aliases so nothing breaks if external code imports them
 _clamp_sub   = _c
@@ -256,13 +262,15 @@ def _grade_task1(
     breakdown["response_efficiency_score"] = round(response_efficiency, 4)
 
     # weighted sum
-    w     = task.grader_weights
-    score = _c(
+    w = task.grader_weights
+
+    raw_score = (
         w["avg_sentiment"]         * avg_sent_score
         + w["trust_recovery"]      * trust_recovery
         + w["response_efficiency"] * response_efficiency
     )
-    return float(score), breakdown
+    score = _safe_score(raw_score)
+    return score, breakdown
 
 
 # ─────────────────────────────────────────────────────────────
@@ -284,6 +292,7 @@ def _grade_task2(
     else:
         overshoot       = final_virality - task.success_criteria["max_final_virality"]
         virality_score -= overshoot * 1.5
+    virality_score = max(-1.0, min(1.0, virality_score))
     virality_score = _c(virality_score)
     breakdown["virality_reduction_score"] = round(virality_score, 4)
 
@@ -291,7 +300,7 @@ def _grade_task2(
     # KEY FIX: raw final_trust can be exactly 0.0 from the environment.
     # In the original code trust_score entered the weighted sum unclamped,
     # pushing the final score to exactly 0.0 which the validator rejects.
-    final_trust = float(state.trust_history[-1]) if state.trust_history else 0.0
+    final_trust = _c(float(state.trust_history[-1])) if state.trust_history else _LO
     trust_score = final_trust
     if final_trust < task.success_criteria["min_final_trust"]:
         trust_score *= 0.6
@@ -317,13 +326,14 @@ def _grade_task2(
     breakdown["response_time_score"] = round(response_time_score, 4)
 
     # weighted sum
-    w     = task.grader_weights
-    score = _c(
+    w = task.grader_weights
+    raw_score = (
         w["virality_reduction"] * virality_score
         + w["trust_recovery"]  * trust_score
         + w["response_time"]   * response_time_score
     )
-    return float(score), breakdown
+    score = _safe_score(raw_score)
+    return score, breakdown
 
 
 # ─────────────────────────────────────────────────────────────
@@ -356,7 +366,7 @@ def _grade_task3(
     breakdown["misinformation_control_score"] = round(misinfo_score, 4)
 
     # trust stability score
-    trust_history = state.trust_history or [0.0]
+    trust_history = state.trust_history or [_LO]
     min_trust     = float(min(trust_history))
     final_trust   = float(trust_history[-1])
 
@@ -389,13 +399,15 @@ def _grade_task3(
     breakdown["decision_quality_score"] = round(decision_score, 4)
 
     # weighted sum
-    w     = task.grader_weights
-    score = _c(
+    w = task.grader_weights
+
+    raw_score = (
         w["misinformation_control"] * misinfo_score
         + w["trust_stability"]      * trust_stability_score
         + w["decision_quality"]     * decision_score
     )
-    return float(score), breakdown
+    score = _safe_score(raw_score)
+    return score, breakdown
 
 
 # ─────────────────────────────────────────────────────────────
