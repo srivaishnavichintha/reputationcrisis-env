@@ -269,7 +269,7 @@ def _grade_task1(
         + w["trust_recovery"]      * trust_recovery
         + w["response_efficiency"] * response_efficiency
     )
-    score = _safe_score(raw_score)
+    score = max(1e-4, min(1 - 1e-6, raw_score))
     return score, breakdown
 
 
@@ -332,7 +332,7 @@ def _grade_task2(
         + w["trust_recovery"]  * trust_score
         + w["response_time"]   * response_time_score
     )
-    score = _safe_score(raw_score)
+    score = max(1e-4, min(1 - 1e-6, raw_score))
     return score, breakdown
 
 
@@ -406,7 +406,7 @@ def _grade_task3(
         + w["trust_stability"]      * trust_stability_score
         + w["decision_quality"]     * decision_score
     )
-    score = _safe_score(raw_score)
+    score = max(1e-4, min(1 - 1e-6, raw_score))
     return score, breakdown
 
 
