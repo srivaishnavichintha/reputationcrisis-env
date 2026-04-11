@@ -435,7 +435,8 @@ class ReputationCrisisEnv:
         )
 
         # Normalize to [0, 1]
-        final_reward = max(0.0, min(1.0, raw_reward))
+        EPS = 1e-6
+        final_reward = max(EPS, min(1.0 - EPS, raw_reward))
         # Build reason string
         reason_parts = []
         if sentiment_reward > 0.15:
@@ -453,7 +454,14 @@ class ReputationCrisisEnv:
 
         reason = "; ".join(reason_parts) if reason_parts else "baseline reward"
 
-        return Reward(value=_safe(round(final_reward, 4)), reason=reason, breakdown=breakdown)
+        EPS = 1e-6
+        safe_value = max(EPS, min(1.0 - EPS, final_reward))
+
+        return Reward(
+            value=safe_value,
+            reason=reason,
+            breakdown=breakdown
+        )
 
     # ─────────────────────────────────────────────────────────
     # Helpers

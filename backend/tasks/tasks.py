@@ -23,11 +23,14 @@ _LO: float = 1e-4   # 0.0001
 _HI: float = 1 - 1e-6
 
 def _c(v: float) -> float:
-    """Clamp to strict open interval (0, 1) with float safety."""
-    if v != v:  # NaN check
+    if v is None or v != v:  # None or NaN
         return _LO
-    v = max(_LO, min(_HI, v))
-    return float(v)
+    try:
+        v = float(v)
+    except:
+        return _LO
+    return max(_LO, min(_HI, v))
+
 def _safe_score(v: float) -> float:
     v = _c(v)
     return float(min(max(v, _LO), _HI))
@@ -269,7 +272,7 @@ def _grade_task1(
         + w["trust_recovery"]      * trust_recovery
         + w["response_efficiency"] * response_efficiency
     )
-    score = max(1e-4, min(1 - 1e-6, raw_score))
+    score = _c(raw_score)
     return score, breakdown
 
 
@@ -332,7 +335,7 @@ def _grade_task2(
         + w["trust_recovery"]  * trust_score
         + w["response_time"]   * response_time_score
     )
-    score = max(1e-4, min(1 - 1e-6, raw_score))
+    score = _c(raw_score)
     return score, breakdown
 
 
@@ -406,7 +409,7 @@ def _grade_task3(
         + w["trust_stability"]      * trust_stability_score
         + w["decision_quality"]     * decision_score
     )
-    score = max(1e-4, min(1 - 1e-6, raw_score))
+    score = _c(raw_score)
     return score, breakdown
 
 
