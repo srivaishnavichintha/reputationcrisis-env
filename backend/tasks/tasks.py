@@ -20,7 +20,7 @@ from backend.env.models import Observation, Action, ActionType
 # ─────────────────────────────────────────────────────────────
 
 _LO: float = 1e-4   # 0.0001
-_HI: float = 0.9999
+_HI: float = 1 - 1e-6
 
 def _c(v: float) -> float:
     """Clamp to strict open interval (0, 1)."""
