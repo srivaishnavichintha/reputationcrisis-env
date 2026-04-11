@@ -19,8 +19,8 @@ from backend.env.models import Observation, Action, ActionType
 #   never 0.0, never 1.0, no matter what value goes in.
 # ─────────────────────────────────────────────────────────────
 
-_LO: float = 1e-4   # 0.0001
-_HI: float = 1 - 1e-6
+_LO: float = 1e-4   # 0.0001  — round(0.0001, 4) == 0.0001  ✓ strictly > 0
+_HI: float = 1 - 1e-4  # 0.9999 — round(0.9999, 4) == 0.9999  ✓ strictly < 1
 
 def _c(v: float) -> float:
     if v is None or v != v:  # None or NaN
