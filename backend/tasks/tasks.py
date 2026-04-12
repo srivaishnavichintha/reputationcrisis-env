@@ -237,26 +237,35 @@ def run_episode(
     )
 
 
+def finalize(v):
+    try:
+        v = float(v)
+    except Exception:
+        return 0.5
+
+    if math.isnan(v) or math.isinf(v):
+        return 0.5
+
+    v = max(EPS, min(1.0 - EPS, v))
+    return float(v)
+
 # ─────────────────────────────────────────────────────────────
 # Grade dispatcher
 # ─────────────────────────────────────────────────────────────
 
-def grade_episode(
-    task: TaskDefinition,
-    state,
-    env: ReputationCrisisEnv,
-) -> Tuple[float, Dict[str, float]]:
-    graders = {
+def grade_episode(task, state, env):
+    grader = {
         "task_1_sentiment_stabilization": _grade_task1,
-        "task_2_viral_outrage_control":   _grade_task2,
-        "task_3_misinformation_crisis":   _grade_task3,
-    }
-    grader = graders.get(task.name)
-    if not grader:
-        raise ValueError(f"No grader found for task: {task.name}")
+        "task_2_viral_outrage_control": _grade_task2,
+        "task_3_misinformation_crisis": _grade_task3,
+    }[task.name]
+
     score, breakdown = grader(task, state, env)
-    # FIXED: triple-safety clamp at dispatcher level — catches any grader edge case
-    score = safe_score(score)
+
+    # ONLY ONE FINAL SAFETY PASS
+    score = finalize(score)
+    breakdown = {k: finalize(v) for k, v in breakdown.items()}
+
     return score, breakdown
 
 
@@ -275,7 +284,7 @@ def _grade_task1(
     avg_sent_score = (avg_sent + 1.0) / 2.0           # [-1,1] -> [0,1]
     if sentiments[-1] > 0:
         avg_sent_score += 0.10
-    avg_sent_score = _c(avg_sent_score)                # FIXED: clamp sub-score
+    avg_sent_score = finalize(avg_sent_score)                # FIXED: clamp sub-score
     breakdown["avg_sentiment_score"] = float(avg_sent_score)
 
     # --- trust recovery score ---
@@ -284,7 +293,7 @@ def _grade_task1(
     trust_recovery = 0.5 + (final_trust - initial_trust)
     if final_trust < task.success_criteria["min_final_trust"]:
         trust_recovery *= 0.5
-    trust_recovery = _c(trust_recovery)                # FIXED: clamp sub-score
+    trust_recovery = finalize(trust_recovery)                # FIXED: clamp sub-score
     breakdown["trust_recovery_score"] = safe_output(trust_recovery)
 
     # --- response efficiency score ---
@@ -297,7 +306,7 @@ def _grade_task1(
         total_actions,
     )
     delay_penalty       = min(0.3, first_non_ignore * 0.05)
-    response_efficiency = _c(1.0 - ignore_ratio * 2.0 - delay_penalty)  # FIXED: clamp
+    response_efficiency = finalize(1.0 - ignore_ratio * 2.0 - delay_penalty)  # FIXED: clamp
     breakdown["response_efficiency_score"] = safe_output(response_efficiency)
 
     # --- weighted sum ---
@@ -308,8 +317,11 @@ def _grade_task1(
         + w["response_efficiency"] * response_efficiency
     )
     # FIXED: safe_score at FINAL RETURN — bulletproof regardless of inputs
-    score = safe_score(raw_score)
-    return score, breakdown
+    score = finalize(raw_score)
+
+    clean_breakdown = {k: finalize(v) for k, v in breakdown.items()}
+
+    return score, clean_breakdown
 
 
 # ─────────────────────────────────────────────────────────────
@@ -335,16 +347,16 @@ def _grade_task2(
         overshoot       = final_virality - task.success_criteria["max_final_virality"]
         virality_score -= overshoot * 1.5
     virality_score = max(-1.0, min(1.0, virality_score))
-    virality_score = _c(virality_score)                # FIXED: clamp sub-score
+    virality_score = finalize(virality_score)                # FIXED: clamp sub-score
     breakdown["virality_reduction_score"] = safe_output(virality_score)
 
     # --- trust recovery score ---
     # FIXED: raw trust from env can be exactly 0.0; clamp before multiplying
-    final_trust = _c(float(state.trust_history[-1])) if state.trust_history else _LO
+    final_trust = finalize(float(state.trust_history[-1])) if state.trust_history else _LO
     trust_score = final_trust
     if final_trust < task.success_criteria["min_final_trust"]:
         trust_score *= 0.6
-    trust_score = _c(trust_score)                      # FIXED: clamp after penalty
+    trust_score = finalize(trust_score)                      # FIXED: clamp after penalty
     breakdown["trust_recovery_score"] = safe_output(trust_score)
 
     # --- response time score ---
@@ -363,7 +375,7 @@ def _grade_task2(
         rt = max(0.10, 0.50 - (first_real - 5) * 0.05)
 
     ignore_count        = action_history.count("ignore")
-    response_time_score = _c(rt - ignore_count * 0.03)  # FIXED: clamp sub-score
+    response_time_score = finalize(rt - ignore_count * 0.03)  # FIXED: clamp sub-score
     breakdown["response_time_score"] = safe_output(response_time_score)
 
     # --- weighted sum ---
@@ -374,8 +386,11 @@ def _grade_task2(
         + w["response_time"]   * response_time_score
     )
     # FIXED: safe_score at FINAL RETURN — bulletproof regardless of inputs
-    score = safe_score(raw_score)
-    return score, breakdown
+    score = finalize(raw_score)
+
+    clean_breakdown = {k: finalize(v) for k, v in breakdown.items()}
+
+    return score, clean_breakdown
 
 
 # ─────────────────────────────────────────────────────────────
@@ -409,7 +424,7 @@ def _grade_task3(
         # FIXED: ensure misinfo_raw never hits 0.0 when no attempts
         misinfo_raw = max(_LO, misinfo_raw)
 
-    misinfo_score = _c(misinfo_raw)                    # FIXED: clamp sub-score
+    misinfo_score =finalize(misinfo_raw)                    # FIXED: clamp sub-score
     breakdown["misinformation_control_score"] = safe_output(misinfo_score)
 
     # --- trust stability score ---
@@ -429,7 +444,7 @@ def _grade_task3(
         variance = sum((t - mean_t) ** 2 for t in trust_history) / len(trust_history)
         ts      -= variance * 2.0
 
-    trust_stability_score = _c(ts)                     # FIXED: clamp sub-score
+    trust_stability_score = finalize(ts)                     # FIXED: clamp sub-score
     breakdown["trust_stability_score"] = safe_output(trust_stability_score)
 
     # --- decision quality score ---
@@ -441,7 +456,7 @@ def _grade_task3(
     dq = good_count / total - bad_count / total * 0.5
     if not clarification_steps:
         dq *= 0.6
-    decision_score = _c(dq)                            # FIXED: clamp sub-score
+    decision_score =finalize(dq)                            # FIXED: clamp sub-score
     breakdown["decision_quality_score"] = safe_output(decision_score)
 
     # --- weighted sum ---
@@ -452,8 +467,11 @@ def _grade_task3(
         + w["decision_quality"]     * decision_score
     )
     # FIXED: safe_score at FINAL RETURN — bulletproof regardless of inputs
-    score = safe_score(raw_score)
-    return score, breakdown
+    score = finalize(raw_score)
+
+    clean_breakdown = {k: finalize(v) for k, v in breakdown.items()}
+
+    return score, clean_breakdown
 
 
 # ─────────────────────────────────────────────────────────────
