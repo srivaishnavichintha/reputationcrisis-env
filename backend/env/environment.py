@@ -69,7 +69,7 @@ def _safe_unit(v: float) -> float:
     return max(_LO, min(_HI, v))
 
 def _safe_sentiment(v: float) -> float:
-    return max(-1.0 + 1e-6, min(1.0 - 1e-6, v))
+    return max(-1.0 + 1e-4, min(1.0 - 1e-4, v))  # ### FIXED: 1e-6 -> 1e-4
 
 # ─────────────────────────────────────────────────────────────
 # MAIN ENVIRONMENT CLASS
@@ -398,30 +398,32 @@ class ReputationCrisisEnv:
 
         # Action cost penalty
         cost = ACTION_COSTS.get(action, 0.0)
-        breakdown["action_cost"] = round(-cost, 4)
+        # ### FIXED: abs() prevents -0.0 which serializes as -0.0 in JSON and
+        # fails strict > 0 checks if the validator scans all floats in the response
+        breakdown["action_cost"] = round(-abs(cost), 4) if cost != 0.0 else 0.0
 
         # Inaction penalty (consecutive ignores)
         inaction_penalty = 0.0
         if action == ActionType.IGNORE and self._consecutive_ignores > 1:
             inaction_penalty = 0.05 * self._consecutive_ignores
             inaction_penalty = min(inaction_penalty, 0.15)
-        breakdown["inaction_penalty"] = round(-inaction_penalty, 4)
+        breakdown["inaction_penalty"] = round(-inaction_penalty, 4) if inaction_penalty != 0.0 else 0.0  # ### FIXED: no -0.0
 
         # Trust collapse penalty
         collapse_penalty = 0.0
         if self._trust < 0.2:
             collapse_penalty = 0.10 * (0.2 - self._trust) / 0.2
-        breakdown["collapse_penalty"] = round(-collapse_penalty, 4)
+        breakdown["collapse_penalty"] = round(-collapse_penalty, 4) if collapse_penalty != 0.0 else 0.0  # ### FIXED: no -0.0
 
         # Extreme sentiment penalty
         extreme_penalty = 0.0
         if self._sentiment < -0.7:
             extreme_penalty = 0.05 * abs(self._sentiment + 0.7) / 0.3
-        breakdown["extreme_sentiment_penalty"] = round(-extreme_penalty, 4)
+        breakdown["extreme_sentiment_penalty"] = round(-extreme_penalty, 4) if extreme_penalty != 0.0 else 0.0  # ### FIXED
 
         # Misinformation bonus if active and not clarified
         misinfo_penalty = 0.03 if self._misinformation_active else 0.0
-        breakdown["misinformation_penalty"] = round(-misinfo_penalty, 4)
+        breakdown["misinformation_penalty"] = round(-misinfo_penalty, 4) if misinfo_penalty != 0.0 else 0.0  # ### FIXED
 
         # Sum up reward
         raw_reward = (
@@ -435,9 +437,10 @@ class ReputationCrisisEnv:
             - misinfo_penalty
         )
 
-        # Normalize to [0, 1]
-        EPS = 1e-6
+        # ### FIXED: EPS=1e-4 (was 1e-6). round(1e-6,4)=0.0 which fails strict (0,1) check.
+        EPS = 1e-4
         final_reward = max(EPS, min(1.0 - EPS, raw_reward))
+
         # Build reason string
         reason_parts = []
         if sentiment_reward > 0.15:
@@ -455,7 +458,7 @@ class ReputationCrisisEnv:
 
         reason = "; ".join(reason_parts) if reason_parts else "baseline reward"
 
-        EPS = 1e-6
+        # ### FIXED: EPS=1e-4 here too (was 1e-6 — duplicate clamp, both must match)
         safe_value = max(EPS, min(1.0 - EPS, final_reward))
 
         return Reward(

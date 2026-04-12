@@ -14,53 +14,45 @@ from backend.env.models import Observation, Action, ActionType
 
 
 # ─────────────────────────────────────────────────────────────
-# ONE clamping function used everywhere.
-# Guarantees result is STRICTLY inside (0, 1):
-#   never 0.0, never 1.0, no matter what value goes in.
+# CLAMPING — used at EVERY score return point.
+# eps=1e-4 survives round(...,4): round(1e-4,4)=0.0001 ✓
+#                                 round(0.9999,4)=0.9999 ✓
 # ─────────────────────────────────────────────────────────────
 
-_LO: float = 1e-4   # strictly > 0 AND survives round(..., 4) → 0.0001
-_HI: float = 1 - 1e-4  # strictly < 1 AND survives round(..., 4) → 0.9999
+_LO: float = 1e-4        # ### FIXED: was 1e-6 — round(1e-6,4)=0.0 (invalid)
+_HI: float = 1 - 1e-4   # ### FIXED: was 1-1e-6 — round(0.999999,4)=1.0 (invalid)
 
-# Required safe_score function (exact interface specified by OpenEnv grading system)
+
 def safe_score(score) -> float:
     """
-    Clamp score to the open interval (0, 1) — strictly between 0 and 1.
-
-    Uses eps=1e-4 so that round(score, 4) also stays strictly in (0, 1):
-        round(1e-4, 4)  = 0.0001  (not 0.0)
-        round(0.9999, 4) = 0.9999  (not 1.0)
-
-    Handles: None, NaN, ±inf, int, bool, non-numeric (returns 0.5).
+    Clamp to strictly-open interval (0, 1).
+    Handles None, NaN, ±inf, bool, non-numeric → returns 0.5.
+    eps=1e-4 so round(result,4) also stays strictly in (0,1).
     """
     try:
         score = float(score)
     except (TypeError, ValueError):
         return 0.5
-    if score is None:
-        return 0.5
-    # NaN and inf checks (work for all numeric types after float() cast)
-    if score != score:            # NaN
+    if score != score:                               # NaN
         return 0.5
     if score == float("inf") or score == float("-inf"):
         return 0.5
-    # Strict clamp: result is always strictly inside (0, 1)
+    # ### FIXED eps: 1e-4 (not 1e-6) so round(...,4) cannot produce 0.0 or 1.0
     eps = 1e-4
-    score = max(eps, min(1.0 - eps, score))
-    return score
+    return max(eps, min(1.0 - eps, score))
+
 
 def _c(v: float) -> float:
-    """Internal clamp — delegates to safe_score for consistent behaviour."""
+    """Clamp any sub-score — always delegates to safe_score."""
     try:
         v = float(v)
     except Exception:
         return 0.5
     return safe_score(v)
 
-def _safe_score(v: float) -> float:
-    return safe_score(v)
 
-# Legacy aliases so nothing breaks if external code imports them
+# Legacy aliases — keep so nothing breaks if external code imports them
+_safe_score  = safe_score
 _clamp_sub   = _c
 _clamp_score = _c
 
@@ -247,11 +239,14 @@ def grade_episode(
     grader = graders.get(task.name)
     if not grader:
         raise ValueError(f"No grader found for task: {task.name}")
-    return grader(task, state, env)
+    score, breakdown = grader(task, state, env)
+    # ### FIXED: triple-safety clamp at dispatcher level catches any grader bug
+    score = safe_score(score)
+    return score, breakdown
 
 
 # ─────────────────────────────────────────────────────────────
-# Task 1 grader
+# Task 1 grader — Sentiment Stabilization
 # ─────────────────────────────────────────────────────────────
 
 def _grade_task1(
@@ -259,25 +254,25 @@ def _grade_task1(
 ) -> Tuple[float, Dict[str, float]]:
     breakdown: Dict[str, float] = {}
 
-    # avg sentiment score
+    # --- avg sentiment score ---
     sentiments     = state.sentiment_history or [-1.0]
     avg_sent       = sum(sentiments) / len(sentiments)
-    avg_sent_score = (avg_sent + 1.0) / 2.0        # [-1,1] -> [0,1]
+    avg_sent_score = (avg_sent + 1.0) / 2.0           # [-1,1] -> [0,1]
     if sentiments[-1] > 0:
         avg_sent_score += 0.10
-    avg_sent_score = _c(avg_sent_score)
+    avg_sent_score = _c(avg_sent_score)                # ### clamp sub-score
     breakdown["avg_sentiment_score"] = round(avg_sent_score, 4)
 
-    # trust recovery score
+    # --- trust recovery score ---
     final_trust    = float(state.trust_history[-1]) if state.trust_history else 0.0
     initial_trust  = float(task.scenario_config["initial_trust"])
     trust_recovery = 0.5 + (final_trust - initial_trust)
     if final_trust < task.success_criteria["min_final_trust"]:
         trust_recovery *= 0.5
-    trust_recovery = _c(trust_recovery)
+    trust_recovery = _c(trust_recovery)                # ### clamp sub-score
     breakdown["trust_recovery_score"] = round(trust_recovery, 4)
 
-    # response efficiency score
+    # --- response efficiency score ---
     ignore_count     = state.action_history.count("ignore")
     total_actions    = len(state.action_history) or 1
     ignore_ratio     = ignore_count / total_actions
@@ -286,24 +281,23 @@ def _grade_task1(
         total_actions,
     )
     delay_penalty       = min(0.3, first_non_ignore * 0.05)
-    response_efficiency = _c(1.0 - ignore_ratio * 2.0 - delay_penalty)
+    response_efficiency = _c(1.0 - ignore_ratio * 2.0 - delay_penalty)  # ### clamp
     breakdown["response_efficiency_score"] = round(response_efficiency, 4)
 
-    # weighted sum
+    # --- weighted sum ---
     w = task.grader_weights
-
     raw_score = (
         w["avg_sentiment"]         * avg_sent_score
         + w["trust_recovery"]      * trust_recovery
         + w["response_efficiency"] * response_efficiency
     )
+    # ### FIXED: safe_score at the final return — bulletproof regardless of inputs
     score = safe_score(raw_score)
-    print("FINAL TASK SCORE:", score)
     return score, breakdown
 
 
 # ─────────────────────────────────────────────────────────────
-# Task 2 grader
+# Task 2 grader — Viral Outrage Control
 # ─────────────────────────────────────────────────────────────
 
 def _grade_task2(
@@ -311,10 +305,10 @@ def _grade_task2(
 ) -> Tuple[float, Dict[str, float]]:
     breakdown: Dict[str, float] = {}
 
-    # virality reduction score
+    # --- virality reduction score ---
     initial_virality = float(task.scenario_config["initial_virality"])
     final_virality   = float(state.virality_history[-1]) if state.virality_history else 1.0
-    virality_score   = (initial_virality - final_virality) / initial_virality  # raw
+    virality_score   = (initial_virality - final_virality) / initial_virality
 
     if final_virality <= task.success_criteria["max_final_virality"]:
         virality_score += 0.15
@@ -322,21 +316,19 @@ def _grade_task2(
         overshoot       = final_virality - task.success_criteria["max_final_virality"]
         virality_score -= overshoot * 1.5
     virality_score = max(-1.0, min(1.0, virality_score))
-    virality_score = _c(virality_score)
+    virality_score = _c(virality_score)                # ### clamp sub-score
     breakdown["virality_reduction_score"] = round(virality_score, 4)
 
-    # trust recovery score
-    # KEY FIX: raw final_trust can be exactly 0.0 from the environment.
-    # In the original code trust_score entered the weighted sum unclamped,
-    # pushing the final score to exactly 0.0 which the validator rejects.
+    # --- trust recovery score ---
+    # ### FIXED: raw trust from env can be exactly 0.0; clamp before multiplying
     final_trust = _c(float(state.trust_history[-1])) if state.trust_history else _LO
     trust_score = final_trust
     if final_trust < task.success_criteria["min_final_trust"]:
         trust_score *= 0.6
-    trust_score = _c(trust_score)          # ← this line was missing
+    trust_score = _c(trust_score)                      # ### clamp after penalty
     breakdown["trust_recovery_score"] = round(trust_score, 4)
 
-    # response time score
+    # --- response time score ---
     first_real = next(
         (i for i, a in enumerate(state.action_history) if a != "ignore"),
         len(state.action_history),
@@ -351,23 +343,23 @@ def _grade_task2(
         rt = max(0.10, 0.50 - (first_real - 5) * 0.05)
 
     ignore_count        = state.action_history.count("ignore")
-    response_time_score = _c(rt - ignore_count * 0.03)
+    response_time_score = _c(rt - ignore_count * 0.03)  # ### clamp sub-score
     breakdown["response_time_score"] = round(response_time_score, 4)
 
-    # weighted sum
+    # --- weighted sum ---
     w = task.grader_weights
     raw_score = (
         w["virality_reduction"] * virality_score
         + w["trust_recovery"]  * trust_score
         + w["response_time"]   * response_time_score
     )
+    # ### FIXED: safe_score at the final return — bulletproof regardless of inputs
     score = safe_score(raw_score)
-    print("FINAL TASK SCORE:", score)
     return score, breakdown
 
 
 # ─────────────────────────────────────────────────────────────
-# Task 3 grader
+# Task 3 grader — Misinformation Crisis
 # ─────────────────────────────────────────────────────────────
 
 def _grade_task3(
@@ -375,7 +367,7 @@ def _grade_task3(
 ) -> Tuple[float, Dict[str, float]]:
     breakdown: Dict[str, float] = {}
 
-    # misinformation control score
+    # --- misinformation control score ---
     misinfo_neutralized = not state.misinformation_active
     clarification_steps = [
         i for i, a in enumerate(state.action_history) if a == "clarification"
@@ -386,18 +378,18 @@ def _grade_task3(
             else len(state.action_history)
         )
         total       = len(state.action_history) or 1
-        # Protect against division by zero: total is always >= 1 above
+        # ### speed_bonus: safe_score ensures it is strictly < 1.0
         speed_bonus = safe_score(1.0 - first_clarify / total)
-        # 0.70 + 0.30 * speed_bonus: speed_bonus < 1, so product < 1.0 always
+        # 0.70 + 0.30 * speed_bonus < 0.70 + 0.30 * 1.0 = 1.0 always
         misinfo_raw = 0.70 + 0.30 * speed_bonus
     else:
         clarify_attempts = len(clarification_steps)
         misinfo_raw      = min(0.15, 0.05 + clarify_attempts * 0.03)
 
-    misinfo_score = _c(misinfo_raw)    # clamp in BOTH branches
+    misinfo_score = _c(misinfo_raw)                    # ### clamp sub-score
     breakdown["misinformation_control_score"] = round(misinfo_score, 4)
 
-    # trust stability score
+    # --- trust stability score ---
     trust_history = state.trust_history or [_LO]
     min_trust     = float(min(trust_history))
     final_trust   = float(trust_history[-1])
@@ -407,17 +399,17 @@ def _grade_task3(
     elif min_trust >= 0.20:
         ts = (min_trust - 0.10) * 0.5
     else:
-        ts = _LO    # worst case: use _LO constant, never literal 0 or 0.001
+        ts = _LO                                       # ### never literal 0
 
     if len(trust_history) > 2:
         mean_t   = sum(trust_history) / len(trust_history)
         variance = sum((t - mean_t) ** 2 for t in trust_history) / len(trust_history)
         ts      -= variance * 2.0
 
-    trust_stability_score = _c(ts)
+    trust_stability_score = _c(ts)                     # ### clamp sub-score
     breakdown["trust_stability_score"] = round(trust_stability_score, 4)
 
-    # decision quality score
+    # --- decision quality score ---
     actions          = state.action_history
     total            = len(actions) or 1
     good_actions     = {"clarification", "apology", "pr_campaign"}
@@ -427,18 +419,17 @@ def _grade_task3(
     dq = good_count / total - bad_count / total * 0.5
     if not clarification_steps:
         dq *= 0.6
-    decision_score = _c(dq)
+    decision_score = _c(dq)                            # ### clamp sub-score
     breakdown["decision_quality_score"] = round(decision_score, 4)
 
-    # weighted sum
+    # --- weighted sum ---
     w = task.grader_weights
-
     raw_score = (
         w["misinformation_control"] * misinfo_score
         + w["trust_stability"]      * trust_stability_score
         + w["decision_quality"]     * decision_score
     )
-    print("RAW SCORE:", raw_score)
+    # ### FIXED: safe_score at the final return — bulletproof regardless of inputs
     score = safe_score(raw_score)
     return score, breakdown
 
