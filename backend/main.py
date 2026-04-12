@@ -1,9 +1,11 @@
 """
 FastAPI server for Digital Reputation Crisis Manager OpenEnv.
 
-Endpoints:
+Endpoints (all registered at BOTH bare path AND /api/ prefix):
   POST /reset          - Reset environment, returns initial Observation
+  POST /api/reset      - Same (OpenEnv validator calls this path)  # FIXED
   POST /step           - Take action, returns (Observation, Reward, done, info)
+  POST /api/step       - Same (OpenEnv validator calls this path)  # FIXED
   GET  /state          - Get full internal state
   GET  /tasks          - List all tasks
   POST /run_task       - Run a complete episode for a task
@@ -21,7 +23,7 @@ from fastapi.responses import FileResponse
 
 from backend.env.environment import ReputationCrisisEnv
 from backend.env.models import Observation, Action, Reward, EnvironmentState
-from backend.tasks.tasks import TASKS, run_episode, EpisodeResult
+from backend.tasks.tasks import TASKS, run_episode, EpisodeResult, safe_score, grade_episode
 from backend.agents.baseline_agent import create_agent
 
 app = FastAPI(
@@ -110,18 +112,14 @@ class EpisodeResultResponse(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────
-# Endpoints
+# Shared handler logic (reused by both /reset and /api/reset)
 # ─────────────────────────────────────────────────────────────
 
-@app.get("/health")
-async def health():
-    """Health check endpoint."""
-    return {"status": "ok", "version": "1.0.0"}
-
-
-
-@app.post("/reset")
-async def reset(request: Request):
+async def _handle_reset(request: Request):
+    """
+    Core reset logic — called by both /reset and /api/reset.
+    # FIXED: extracted into shared function so /api/reset is not a stub.
+    """
     try:
         body = await request.json()
     except Exception:
@@ -157,15 +155,17 @@ async def reset(request: Request):
 
     except Exception as e:
         import traceback
-        # Return 500 WITH the real error so you can read it in HF logs / browser
         raise HTTPException(status_code=500, detail={
             "error": str(e),
             "traceback": traceback.format_exc()
         })
 
-@app.post("/step", response_model=StepResponse)
-async def step(request: StepRequest):
-    """Take an action in the environment."""
+
+async def _handle_step(request: StepRequest):
+    """
+    Core step logic — called by both /step and /api/step.
+    # FIXED: extracted into shared function so /api/step is not a stub.
+    """
     env = _get_env(request.session_id)
 
     try:
@@ -173,26 +173,90 @@ async def step(request: StepRequest):
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # ── CRITICAL: inject score into info so the HF validator can read it ──
-    # The validator drives step-by-step and reads info["score"] from the
-    # final step response (when done=True).  Without this key it logs "-"
-    # and marks the submission as "out of range".
+    # Inject graded score into info so the HF validator can read it.
+    # FIXED: also injects score for /api/step path.
     if done:
         task_name = _session_tasks.get(request.session_id)
         if task_name and task_name in TASKS:
-            from backend.tasks.tasks import grade_episode, safe_score
             full_state = env.state()
             score_val, breakdown = grade_episode(TASKS[task_name], full_state, env)
-            info["score"] = safe_score(score_val)           # ← what the validator reads
-            info["grader_score"] = safe_score(score_val)   # alias for clarity
+            info["score"]            = safe_score(score_val)
+            info["grader_score"]     = safe_score(score_val)
             info["grader_breakdown"] = breakdown
         else:
-            # No task context — fall back to clamped cumulative reward
-            from backend.tasks.tasks import safe_score
             info["score"] = safe_score(info.get("cumulative_reward", 0.5))
 
     return StepResponse(observation=obs, reward=reward, done=done, info=info)
 
+
+# ─────────────────────────────────────────────────────────────
+# Endpoints — bare paths (legacy / openenv.yaml)
+# ─────────────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    """Health check endpoint."""
+    return {"status": "ok", "version": "1.0.0"}
+
+
+@app.post("/reset")
+async def reset(request: Request):
+    return await _handle_reset(request)
+
+
+@app.post("/step", response_model=StepResponse)
+async def step(request: StepRequest):
+    return await _handle_step(request)
+
+
+# ─────────────────────────────────────────────────────────────
+# Endpoints — /api/ prefix  (OpenEnv validator calls these)
+# FIXED: these were missing entirely, causing 405 Method Not Allowed
+# ─────────────────────────────────────────────────────────────
+
+@app.post("/api/reset")
+async def api_reset(request: Request):
+    """POST /api/reset — identical to POST /reset. # FIXED: was missing."""
+    return await _handle_reset(request)
+
+
+@app.post("/api/step", response_model=StepResponse)
+async def api_step(request: StepRequest):
+    """POST /api/step — identical to POST /step. # FIXED: was missing."""
+    return await _handle_step(request)
+
+
+@app.get("/api/health")
+async def api_health():
+    """GET /api/health — mirrors /health. # FIXED: added for completeness."""
+    return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/api/tasks")
+async def api_list_tasks():
+    """GET /api/tasks — mirrors /tasks. # FIXED: added for completeness."""
+    return {
+        name: {
+            "name": task.name,
+            "description": task.description,
+            "difficulty": task.difficulty,
+            "max_steps": task.max_steps,
+            "success_criteria": task.success_criteria,
+        }
+        for name, task in TASKS.items()
+    }
+
+
+@app.get("/api/state")
+async def api_get_state(session_id: str = "default"):
+    """GET /api/state — mirrors /state. # FIXED: added for completeness."""
+    env = _get_env(session_id)
+    return env.state()
+
+
+# ─────────────────────────────────────────────────────────────
+# Remaining original endpoints
+# ─────────────────────────────────────────────────────────────
 
 @app.get("/state", response_model=EnvironmentState)
 async def get_state(session_id: str = "default"):
@@ -225,7 +289,6 @@ async def run_task(request: RunTaskRequest):
             detail=f"Task '{request.task_name}' not found. Available: {list(TASKS.keys())}"
         )
 
-    # Use LLM agent when hackathon injects API_KEY, so calls go through their proxy.
     api_key = os.environ.get("API_KEY", os.environ.get("OPENAI_API_KEY", ""))
     effective_mode = "llm_with_fallback" if api_key else request.agent_mode
     agent = create_agent(effective_mode)
@@ -248,7 +311,6 @@ async def run_task(request: RunTaskRequest):
     )
 
 
-
 @app.get("/debug")
 async def debug():
     import sys, os
@@ -260,12 +322,13 @@ async def debug():
         "frontend_index_exists": os.path.exists("frontend/dist/index.html"),
     }
 
+
 @app.get("/")
 def serve_frontend():
     if os.path.exists(FRONTEND_INDEX):
         return FileResponse(FRONTEND_INDEX)
-    # Return tasks list so smoke_test check("GET /", ..., required_keys=["tasks"]) passes
     return {"status": "API running", "tasks": list(TASKS.keys())}
+
 
 @app.get("/{full_path:path}")
 def serve_all(full_path: str):

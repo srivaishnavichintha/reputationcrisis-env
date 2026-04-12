@@ -15,30 +15,36 @@ from backend.env.models import Observation, Action, ActionType
 
 # ─────────────────────────────────────────────────────────────
 # CLAMPING — used at EVERY score return point.
-# eps=1e-4 survives round(...,4): round(1e-4,4)=0.0001 ✓
-#                                 round(0.9999,4)=0.9999 ✓
+#
+# FIXED: eps=1e-4 (NOT 1e-6).
+#   round(1e-6,  4) = 0.0      ← INVALID (fails validator)
+#   round(1e-4,  4) = 0.0001   ← valid ✓
+#   round(0.9999,4) = 0.9999   ← valid ✓
+#   round(1.0-1e-6,4) = 1.0    ← INVALID (fails validator)
+#   round(1.0-1e-4,4) = 0.9999 ← valid ✓
 # ─────────────────────────────────────────────────────────────
 
-_LO: float = 1e-4        # ### FIXED: was 1e-6 — round(1e-6,4)=0.0 (invalid)
-_HI: float = 1 - 1e-4   # ### FIXED: was 1-1e-6 — round(0.999999,4)=1.0 (invalid)
+_LO: float = 1e-4        # FIXED: was 1e-6 — round(1e-6,4)=0.0 (invalid)
+_HI: float = 1.0 - 1e-4  # FIXED: was 1-1e-6 — round(0.999999,4)=1.0 (invalid)
 
 
 def safe_score(score) -> float:
     """
     Clamp to strictly-open interval (0, 1).
     Handles None, NaN, ±inf, bool, non-numeric → returns 0.5.
-    eps=1e-4 so round(result,4) also stays strictly in (0,1).
+
+    FIXED: eps=1e-4 so round(result, 4) also stays strictly in (0, 1).
+           Previous eps=1e-6 caused round(1e-6,4)=0.0 which the validator rejects.
     """
     try:
         score = float(score)
     except (TypeError, ValueError):
         return 0.5
-    if score != score:                               # NaN
+    if score != score:                                   # NaN
         return 0.5
     if score == float("inf") or score == float("-inf"):
         return 0.5
-    # ### FIXED eps: 1e-4 (not 1e-6) so round(...,4) cannot produce 0.0 or 1.0
-    eps = 1e-4
+    eps = _LO  # FIXED: 1e-4
     return max(eps, min(1.0 - eps, score))
 
 
@@ -240,7 +246,7 @@ def grade_episode(
     if not grader:
         raise ValueError(f"No grader found for task: {task.name}")
     score, breakdown = grader(task, state, env)
-    # ### FIXED: triple-safety clamp at dispatcher level catches any grader bug
+    # FIXED: triple-safety clamp at dispatcher level — catches any grader edge case
     score = safe_score(score)
     return score, breakdown
 
@@ -256,32 +262,33 @@ def _grade_task1(
 
     # --- avg sentiment score ---
     sentiments     = state.sentiment_history or [-1.0]
-    avg_sent       = sum(sentiments) / len(sentiments)
+    avg_sent       = sum(sentiments) / max(len(sentiments), 1)  # FIXED: guard /0
     avg_sent_score = (avg_sent + 1.0) / 2.0           # [-1,1] -> [0,1]
     if sentiments[-1] > 0:
         avg_sent_score += 0.10
-    avg_sent_score = _c(avg_sent_score)                # ### clamp sub-score
+    avg_sent_score = _c(avg_sent_score)                # FIXED: clamp sub-score
     breakdown["avg_sentiment_score"] = round(avg_sent_score, 4)
 
     # --- trust recovery score ---
-    final_trust    = float(state.trust_history[-1]) if state.trust_history else 0.0
+    final_trust    = float(state.trust_history[-1]) if state.trust_history else _LO
     initial_trust  = float(task.scenario_config["initial_trust"])
     trust_recovery = 0.5 + (final_trust - initial_trust)
     if final_trust < task.success_criteria["min_final_trust"]:
         trust_recovery *= 0.5
-    trust_recovery = _c(trust_recovery)                # ### clamp sub-score
+    trust_recovery = _c(trust_recovery)                # FIXED: clamp sub-score
     breakdown["trust_recovery_score"] = round(trust_recovery, 4)
 
     # --- response efficiency score ---
-    ignore_count     = state.action_history.count("ignore")
-    total_actions    = len(state.action_history) or 1
+    action_history   = state.action_history or []
+    ignore_count     = action_history.count("ignore")
+    total_actions    = max(len(action_history), 1)     # FIXED: guard /0
     ignore_ratio     = ignore_count / total_actions
     first_non_ignore = next(
-        (i for i, a in enumerate(state.action_history) if a != "ignore"),
+        (i for i, a in enumerate(action_history) if a != "ignore"),
         total_actions,
     )
     delay_penalty       = min(0.3, first_non_ignore * 0.05)
-    response_efficiency = _c(1.0 - ignore_ratio * 2.0 - delay_penalty)  # ### clamp
+    response_efficiency = _c(1.0 - ignore_ratio * 2.0 - delay_penalty)  # FIXED: clamp
     breakdown["response_efficiency_score"] = round(response_efficiency, 4)
 
     # --- weighted sum ---
@@ -291,7 +298,7 @@ def _grade_task1(
         + w["trust_recovery"]      * trust_recovery
         + w["response_efficiency"] * response_efficiency
     )
-    # ### FIXED: safe_score at the final return — bulletproof regardless of inputs
+    # FIXED: safe_score at FINAL RETURN — bulletproof regardless of inputs
     score = safe_score(raw_score)
     return score, breakdown
 
@@ -307,8 +314,11 @@ def _grade_task2(
 
     # --- virality reduction score ---
     initial_virality = float(task.scenario_config["initial_virality"])
-    final_virality   = float(state.virality_history[-1]) if state.virality_history else 1.0
-    virality_score   = (initial_virality - final_virality) / initial_virality
+    # FIXED: guard against division by zero if initial_virality is somehow 0
+    if initial_virality <= 0:
+        initial_virality = _LO
+    final_virality = float(state.virality_history[-1]) if state.virality_history else 1.0
+    virality_score = (initial_virality - final_virality) / initial_virality
 
     if final_virality <= task.success_criteria["max_final_virality"]:
         virality_score += 0.15
@@ -316,22 +326,23 @@ def _grade_task2(
         overshoot       = final_virality - task.success_criteria["max_final_virality"]
         virality_score -= overshoot * 1.5
     virality_score = max(-1.0, min(1.0, virality_score))
-    virality_score = _c(virality_score)                # ### clamp sub-score
+    virality_score = _c(virality_score)                # FIXED: clamp sub-score
     breakdown["virality_reduction_score"] = round(virality_score, 4)
 
     # --- trust recovery score ---
-    # ### FIXED: raw trust from env can be exactly 0.0; clamp before multiplying
+    # FIXED: raw trust from env can be exactly 0.0; clamp before multiplying
     final_trust = _c(float(state.trust_history[-1])) if state.trust_history else _LO
     trust_score = final_trust
     if final_trust < task.success_criteria["min_final_trust"]:
         trust_score *= 0.6
-    trust_score = _c(trust_score)                      # ### clamp after penalty
+    trust_score = _c(trust_score)                      # FIXED: clamp after penalty
     breakdown["trust_recovery_score"] = round(trust_score, 4)
 
     # --- response time score ---
+    action_history = state.action_history or []
     first_real = next(
-        (i for i, a in enumerate(state.action_history) if a != "ignore"),
-        len(state.action_history),
+        (i for i, a in enumerate(action_history) if a != "ignore"),
+        len(action_history),
     )
     if first_real <= 1:
         rt = 0.95
@@ -342,8 +353,8 @@ def _grade_task2(
     else:
         rt = max(0.10, 0.50 - (first_real - 5) * 0.05)
 
-    ignore_count        = state.action_history.count("ignore")
-    response_time_score = _c(rt - ignore_count * 0.03)  # ### clamp sub-score
+    ignore_count        = action_history.count("ignore")
+    response_time_score = _c(rt - ignore_count * 0.03)  # FIXED: clamp sub-score
     breakdown["response_time_score"] = round(response_time_score, 4)
 
     # --- weighted sum ---
@@ -353,7 +364,7 @@ def _grade_task2(
         + w["trust_recovery"]  * trust_score
         + w["response_time"]   * response_time_score
     )
-    # ### FIXED: safe_score at the final return — bulletproof regardless of inputs
+    # FIXED: safe_score at FINAL RETURN — bulletproof regardless of inputs
     score = safe_score(raw_score)
     return score, breakdown
 
@@ -369,24 +380,27 @@ def _grade_task3(
 
     # --- misinformation control score ---
     misinfo_neutralized = not state.misinformation_active
+    action_history      = state.action_history or []
     clarification_steps = [
-        i for i, a in enumerate(state.action_history) if a == "clarification"
+        i for i, a in enumerate(action_history) if a == "clarification"
     ]
     if misinfo_neutralized:
         first_clarify = (
             clarification_steps[0] if clarification_steps
-            else len(state.action_history)
+            else len(action_history)
         )
-        total       = len(state.action_history) or 1
-        # ### speed_bonus: safe_score ensures it is strictly < 1.0
+        total = max(len(action_history), 1)            # FIXED: guard /0
+        # safe_score ensures speed_bonus is strictly < 1.0
         speed_bonus = safe_score(1.0 - first_clarify / total)
         # 0.70 + 0.30 * speed_bonus < 0.70 + 0.30 * 1.0 = 1.0 always
         misinfo_raw = 0.70 + 0.30 * speed_bonus
     else:
         clarify_attempts = len(clarification_steps)
         misinfo_raw      = min(0.15, 0.05 + clarify_attempts * 0.03)
+        # FIXED: ensure misinfo_raw never hits 0.0 when no attempts
+        misinfo_raw = max(_LO, misinfo_raw)
 
-    misinfo_score = _c(misinfo_raw)                    # ### clamp sub-score
+    misinfo_score = _c(misinfo_raw)                    # FIXED: clamp sub-score
     breakdown["misinformation_control_score"] = round(misinfo_score, 4)
 
     # --- trust stability score ---
@@ -399,27 +413,26 @@ def _grade_task3(
     elif min_trust >= 0.20:
         ts = (min_trust - 0.10) * 0.5
     else:
-        ts = _LO                                       # ### never literal 0
+        ts = _LO                                       # FIXED: never literal 0
 
     if len(trust_history) > 2:
         mean_t   = sum(trust_history) / len(trust_history)
         variance = sum((t - mean_t) ** 2 for t in trust_history) / len(trust_history)
         ts      -= variance * 2.0
 
-    trust_stability_score = _c(ts)                     # ### clamp sub-score
+    trust_stability_score = _c(ts)                     # FIXED: clamp sub-score
     breakdown["trust_stability_score"] = round(trust_stability_score, 4)
 
     # --- decision quality score ---
-    actions          = state.action_history
-    total            = len(actions) or 1
+    total            = max(len(action_history), 1)     # FIXED: guard /0
     good_actions     = {"clarification", "apology", "pr_campaign"}
     bad_actions_here = {"ignore", "legal_action"}
-    good_count = sum(1 for a in actions if a in good_actions)
-    bad_count  = sum(1 for a in actions if a in bad_actions_here)
+    good_count = sum(1 for a in action_history if a in good_actions)
+    bad_count  = sum(1 for a in action_history if a in bad_actions_here)
     dq = good_count / total - bad_count / total * 0.5
     if not clarification_steps:
         dq *= 0.6
-    decision_score = _c(dq)                            # ### clamp sub-score
+    decision_score = _c(dq)                            # FIXED: clamp sub-score
     breakdown["decision_quality_score"] = round(decision_score, 4)
 
     # --- weighted sum ---
@@ -429,7 +442,7 @@ def _grade_task3(
         + w["trust_stability"]      * trust_stability_score
         + w["decision_quality"]     * decision_score
     )
-    # ### FIXED: safe_score at the final return — bulletproof regardless of inputs
+    # FIXED: safe_score at FINAL RETURN — bulletproof regardless of inputs
     score = safe_score(raw_score)
     return score, breakdown
 
