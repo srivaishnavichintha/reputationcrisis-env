@@ -17,7 +17,10 @@ import sys
 import argparse
 import json
 from datetime import datetime
+import json
 
+import sys
+sys.stdout.flush()
 # Add project root to path
 sys.path.insert(0, os.path.dirname(__file__))
 
