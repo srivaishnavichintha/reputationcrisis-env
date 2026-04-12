@@ -19,21 +19,34 @@ from backend.env.models import Observation, Action, ActionType
 #   never 0.0, never 1.0, no matter what value goes in.
 # ─────────────────────────────────────────────────────────────
 
-_LO: float = 1e-6   # strictly > 0, survives round(..., 4) as 0.0 → use 1e-4 for display
-_HI: float = 1 - 1e-6  # strictly < 1
+_LO: float = 1e-4   # strictly > 0 AND survives round(..., 4) → 0.0001
+_HI: float = 1 - 1e-4  # strictly < 1 AND survives round(..., 4) → 0.9999
 
 # Required safe_score function (exact interface specified by OpenEnv grading system)
-def safe_score(score: float) -> float:
+def safe_score(score) -> float:
+    """
+    Clamp score to the open interval (0, 1) — strictly between 0 and 1.
+
+    Uses eps=1e-4 so that round(score, 4) also stays strictly in (0, 1):
+        round(1e-4, 4)  = 0.0001  (not 0.0)
+        round(0.9999, 4) = 0.9999  (not 1.0)
+
+    Handles: None, NaN, ±inf, int, bool, non-numeric (returns 0.5).
+    """
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        return 0.5
     if score is None:
         return 0.5
-    if isinstance(score, float):
-        if score != score:  # NaN check
-            return 0.5
-        if score == float("inf") or score == float("-inf"):
-            return 0.5
-    # strict clamp
-    eps = 1e-6
-    score = max(eps, min(1 - eps, score))
+    # NaN and inf checks (work for all numeric types after float() cast)
+    if score != score:            # NaN
+        return 0.5
+    if score == float("inf") or score == float("-inf"):
+        return 0.5
+    # Strict clamp: result is always strictly inside (0, 1)
+    eps = 1e-4
+    score = max(eps, min(1.0 - eps, score))
     return score
 
 def _c(v: float) -> float:
@@ -284,8 +297,8 @@ def _grade_task1(
         + w["trust_recovery"]      * trust_recovery
         + w["response_efficiency"] * response_efficiency
     )
-    print("RAW SCORE:", raw_score)
     score = safe_score(raw_score)
+    print("FINAL TASK SCORE:", score)
     return score, breakdown
 
 
@@ -348,8 +361,8 @@ def _grade_task2(
         + w["trust_recovery"]  * trust_score
         + w["response_time"]   * response_time_score
     )
-    print("RAW SCORE:", raw_score)
     score = safe_score(raw_score)
+    print("FINAL TASK SCORE:", score)
     return score, breakdown
 
 
