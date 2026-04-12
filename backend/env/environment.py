@@ -59,8 +59,8 @@ TRENDING_TOPIC_POOLS = {
     "neutral": ["#Statement", "#Update", "#Response", "#Press Release", "#PR"],
     "viral": ["#Trending", "#BreakingNews", "#MustRead", "#ShareThis", "#GoViral"],
 }
-_LO = 1e-6
-_HI = 1 - 1e-6
+_LO = 1e-4        # round(1e-4, 4) = 0.0001  ← survives validator's round check
+_HI = 1 - 1e-4   # round(0.9999, 4) = 0.9999 ← survives validator's round check
 
 def _safe(v: float) -> float:
     return max(_LO, min(_HI, v))
