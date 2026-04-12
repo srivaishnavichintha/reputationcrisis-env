@@ -24,13 +24,13 @@ import math
 #   round(1.0-1e-4,4) = 0.9999 ← valid ✓
 # ─────────────────────────────────────────────────────────────
 
-_LO: float = 1e-4        # FIXED: was 1e-6 — round(1e-6,4)=0.0 (invalid)
-_HI: float = 1.0 - 1e-4  # FIXED: was 1-1e-6 — round(0.999999,4)=1.0 (invalid)
+_LO: float = 0.01        # FIXED: validator rounds to 2dp; round(0.001,2)=0.0 FAILS; round(0.01,2)=0.01 PASSES
+_HI: float = 1.0 - 0.01  # FIXED: round(0.999,2)=1.0 FAILS; round(0.99,2)=0.99 PASSES
 
 
 
 
-EPS = 1e-4  # must be strictly inside (0,1)
+EPS = 0.01  # FIXED: validator rounds to 2dp. round(0.001,2)=0.0 FAILS. round(0.01,2)=0.01 PASSES.
 
 def safe_score(x) -> float:
     try:

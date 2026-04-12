@@ -19,6 +19,7 @@ import json
 from datetime import datetime
 import json
 
+
 import sys
 sys.stdout.flush()
 # Add project root to path
@@ -28,7 +29,7 @@ from openai import OpenAI
 
 from backend.env.environment import ReputationCrisisEnv
 from backend.env.models import Action, ActionType, CrisisLevel
-from backend.tasks.tasks import TASKS, run_episode, EpisodeResult
+from backend.tasks.tasks import TASKS, run_episode, EpisodeResult, grade_episode, _check_success
 from backend.agents.baseline_agent import create_agent, RuleBasedAgent, LLMAgent
 
 
@@ -108,7 +109,7 @@ def run_task_verbose(task_name: str, agent_fn, noise_seed: int = 42):
     print(
         f"[END] success={'true' if success else 'false'} "
         f"steps={step} "
-        f"rewards={rewards_str}"
+         f"rewards={rewards_str}"
     )
 
     return EpisodeResult(
