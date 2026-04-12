@@ -44,10 +44,7 @@ OPENAI_API_KEY = API_KEY  # keep alias for backward compat
 # Verbose Episode Runner (for inference logging)
 # ─────────────────────────────────────────────────────────────
 
-def run_task_verbose(task_name: str, agent_fn, noise_seed: int = 42) -> EpisodeResult:
-    """Run a task and emit strict OpenEnv step logs."""
-    from backend.tasks.tasks import grade_episode
-
+def run_task_verbose(task_name: str, agent_fn, noise_seed: int = 42):
     task = TASKS[task_name]
     env = ReputationCrisisEnv(
         max_steps=task.max_steps,
@@ -55,53 +52,61 @@ def run_task_verbose(task_name: str, agent_fn, noise_seed: int = 42) -> EpisodeR
         scenario_config=task.scenario_config,
     )
 
-    print(f"\n[START]")
-    print(f"task: {task_name}")
-    print(f"difficulty: {task.difficulty}")
-    print(f"description: {task.description}")
-
     obs = env.reset()
     info = {}
     done = False
-    step_logs = []
+
+    rewards = []
+
+    # ───── START (SINGLE LINE ONLY) ─────
+    print(f"[START] task={task_name} env=openenv model=baseline")
+
+    step = 0
+    last_error = "null"
 
     while not done:
-        action = agent_fn(obs, info)
-        obs, reward, done, info = env.step(action)
+        try:
+            action = agent_fn(obs, info)
+            obs, reward, done, info = env.step(action)
 
-        step_log = {
-            "step": obs.time_step,
-            "action": action.type if isinstance(action.type, str) else action.type.value,
-            "reward": reward.value,
-            "state": {
-                "sentiment_score": obs.sentiment_score,
-                "crisis_level": obs.crisis_level,
-                "public_trust": obs.public_trust,
-                "virality_index": obs.virality_index,
-                "time_step": obs.time_step,
-            },
-            "reward_reason": reward.reason,
-        }
-        step_logs.append(step_log)
+            r = float(reward.value)
+            rewards.append(r)
 
-        print(f"\n[STEP]")
-        print(f"action: {step_log['action']}")
-        print(f"reward: {step_log['reward']}")
-        print(f"state: {json.dumps(step_log['state'], indent=2)}")
+            print(
+                f"[STEP] step={step} "
+                f"action={action.type if isinstance(action.type, str) else action.type.value} "
+                f"reward={r:.2f} "
+                f"done={'true' if done else 'false'} "
+                f"error=null"
+            )
+
+        except Exception as e:
+            last_error = str(e)
+
+            print(
+                f"[STEP] step={step} "
+                f"action=null "
+                f"reward=0.00 "
+                f"done=true "
+                f"error={last_error}"
+            )
+            break
+
+        step += 1
 
     full_state = env.state()
-    score, breakdown = grade_episode(task, full_state, env)
 
-    from backend.tasks.tasks import _check_success
+    score, breakdown = grade_episode(task, full_state, env)
     success = _check_success(task, obs, full_state)
 
-    print(f"\n[END]")
-    print(f"final_score: {score}")
-    print(f"success: {success}")
-    print(f"grader_breakdown: {json.dumps(breakdown, indent=2)}")
-    print(f"total_steps: {full_state.episode_step}")
-    print(f"cumulative_reward: {round(full_state.cumulative_reward, 4)}")
-    print("-" * 60)
+    # ───── END (STRICT FORMAT) ─────
+    rewards_str = ",".join([f"{r:.2f}" for r in rewards])
+
+    print(
+        f"[END] success={'true' if success else 'false'} "
+        f"steps={step} "
+        f"rewards={rewards_str}"
+    )
 
     return EpisodeResult(
         task_name=task_name,
