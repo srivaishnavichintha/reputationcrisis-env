@@ -41,10 +41,10 @@ def safe_score(x) -> float:
     if math.isnan(x) or math.isinf(x):
         return 0.5
 
-    # hard clamp
-    if x <= 0.0:
+    # HARD EDGE LOCK (never allow equality)
+    if x <= EPS:
         return EPS
-    if x >= 1.0:
+    if x >= 1.0 - EPS:
         return 1.0 - EPS
 
     return x
